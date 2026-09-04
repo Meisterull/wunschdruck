@@ -1,0 +1,45 @@
+:root {
+  --grund: #f4f2ee; --karte: #ffffff; --tinte: #2a2723; --gedeckt: #6f6a62;
+  --akzent: #b3591f; --gruen: #2e7d46; --rot: #b3372a; --rand: #e2ddd4;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --grund: #201e1b; --karte: #2a2723; --tinte: #ece8e1; --gedeckt: #a39c90;
+          --akzent: #e08a4c; --gruen: #5cb877; --rot: #e07a6d; --rand: #3a362f; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--grund); color: var(--tinte);
+       font: 16px/1.5 system-ui, sans-serif; }
+header { display: flex; justify-content: space-between; align-items: center;
+         padding: .7rem 1rem; background: var(--karte); border-bottom: 1px solid var(--rand); }
+.marke { font-weight: 700; font-size: 1.15rem; color: var(--tinte); text-decoration: none; }
+nav a { margin-left: 1rem; color: var(--gedeckt); text-decoration: none; }
+main { max-width: 46rem; margin: 0 auto; padding: 1rem; }
+.untertitel { color: var(--gedeckt); display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; }
+.karte { background: var(--karte); border: 1px solid var(--rand); border-radius: 12px;
+         padding: 1rem; margin-bottom: 1rem; }
+h2 { margin: .2rem 0 .8rem; font-size: 1.05rem; }
+label { display: block; margin-bottom: .6rem; color: var(--gedeckt); font-size: .9rem; }
+input, select { display: block; width: 100%; margin-top: .2rem; padding: .5rem;
+                border: 1px solid var(--rand); border-radius: 8px;
+                background: var(--grund); color: var(--tinte); font-size: 1rem; }
+.reihe { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+         gap: .6rem; align-items: end; }
+button { padding: .55rem 1rem; border: 1px solid var(--rand); border-radius: 8px;
+         background: var(--akzent); color: #fff; font-size: 1rem; cursor: pointer; }
+button.gruen { background: var(--gruen); }
+button.rot { background: var(--rot); }
+.aktionen { display: flex; gap: .5rem; margin-top: .5rem; }
+.aktionen form { display: inline; }
+.aktionen button { font-size: .9rem; padding: .4rem .8rem; }
+.job .jobkopf { display: flex; justify-content: space-between; gap: .5rem; flex-wrap: wrap; }
+.job .status { color: var(--gedeckt); }
+.job.status-druckt .status, .job.status-slicet .status { color: var(--akzent); }
+.job.status-fertig .status { color: var(--gruen); }
+.job.status-fehler .status { color: var(--rot); }
+.jobdaten { color: var(--gedeckt); font-size: .9rem; margin-top: .3rem; }
+.hinweis { color: var(--gedeckt); font-size: .9rem; }
+.ok { color: var(--gruen); }
+.fehler { background: var(--grund); border-radius: 8px; padding: .5rem;
+          font-size: .8rem; overflow-x: auto; white-space: pre-wrap; color: var(--rot); }
+.slotnummer { font-weight: 600; align-self: center; }
+.drucker { font-size: .9rem; }

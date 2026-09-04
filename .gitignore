@@ -1,0 +1,6 @@
+slicer/*
+!slicer/holen.sh
+arbeit/
+.env
+__pycache__/
+*.pyc

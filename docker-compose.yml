@@ -1,0 +1,16 @@
+services:
+  wunschdruck:
+    build: .
+    container_name: wunschdruck
+    restart: unless-stopped
+    ports:
+      - "8446:8446"
+    env_file: .env
+    environment:
+      - TZ=Europe/Berlin
+    volumes:
+      - ./slicer/squashfs-root:/opt/orca:ro
+      - wunschdruck-daten:/data
+
+volumes:
+  wunschdruck-daten:

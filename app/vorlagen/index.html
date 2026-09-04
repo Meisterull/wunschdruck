@@ -1,0 +1,93 @@
+{% extends "basis.html" %}
+{% block inhalt %}
+<p class="untertitel">{{ t.untertitel }}
+  <span class="drucker drucker-{{ drucker }}">{{ t.drucker }}:
+    {%- if drucker == 'frei' %} ✅ {{ t.drucker_frei }}
+    {%- elif drucker == 'druckt' %} 🔄 {{ t.drucker_druckt }}
+    {%- elif drucker == 'offline' %} 💤 {{ t.drucker_offline }}
+    {%- else %} ⚠️ {{ t.fehler_kein_moonraker }}{% endif %}</span>
+</p>
+
+<section class="karte">
+  <h2>{{ t.hochladen }}</h2>
+  <form action="/hochladen" method="post" enctype="multipart/form-data">
+    <label>{{ t.datei_waehlen }}
+      <input type="file" name="datei" accept=".stl,.3mf" required>
+    </label>
+    <div class="reihe">
+      <label>{{ t.slot }}
+        <select name="slot">
+          {% for s in slots %}
+          <option value="{{ loop.index }}" {% if s.material == 'leer' %}disabled{% endif %}>
+            {{ loop.index }} — {{ t.leer if s.material == 'leer' else s.material }}{% if s.farbe %} ({{ s.farbe }}){% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>{{ t.qualitaet }}
+        <select name="qualitaet">
+          <option value="standard">{{ t.standard }}</option>
+          <option value="fein">{{ t.fein }}</option>
+          <option value="schnell">{{ t.schnell }}</option>
+        </select>
+      </label>
+      <label>{{ t.stuetzen }}
+        <select name="stuetzen">
+          <option value="auto">{{ t.stuetzen_auto }}</option>
+          <option value="aus">{{ t.stuetzen_aus }}</option>
+        </select>
+      </label>
+      <label>{{ t.platte }}
+        <input type="number" name="platte" value="1" min="1" max="16">
+      </label>
+    </div>
+    <button type="submit">⬆️ {{ t.los }}</button>
+  </form>
+  <p class="hinweis">{{ t.hinweis_freigabe }}</p>
+</section>
+
+<section>
+  <h2>{{ t.jobs }}</h2>
+  {% if not jobs %}<p class="hinweis">{{ t.keine_jobs }}</p>{% endif %}
+  {% for j in jobs %}
+  <div class="karte job status-{{ j.status }}">
+    <div class="jobkopf">
+      <strong>{{ j.name }}</strong>
+      <span class="status">{{ t['status_' + j.status] }}</span>
+    </div>
+    <div class="jobdaten">
+      {% if j.dauer_s %}⏱️ {{ t.dauer }}: {{ dauer_text(j.dauer_s) }} · {% endif %}
+      {% if j.filament_g %}🧵 {{ t.filament }}: {{ '%.1f'|format(j.filament_g) }} g · {% endif %}
+      Slot {{ j.slot }} · {{ t[j.qualitaet] }}
+    </div>
+    {% if j.fehler_text %}<pre class="fehler">{{ j.fehler_text }}</pre>{% endif %}
+    <div class="aktionen">
+      {% if j.status == 'bereit' %}
+      <form action="/jobs/{{ j.id }}/drucken" method="post"><button class="gruen">▶️ {{ t.drucken }}</button></form>
+      {% endif %}
+      {% if j.status in ('bereit', 'freigegeben', 'fehler') %}
+      <form action="/jobs/{{ j.id }}/verwerfen" method="post"><button>✖️ {{ t.verwerfen }}</button></form>
+      {% endif %}
+      {% if j.status not in aktive_status %}
+      <form action="/jobs/{{ j.id }}/loeschen" method="post"><button class="rot">🗑️ {{ t.loeschen }}</button></form>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</section>
+
+<script>
+/* Seite neu laden, wenn sich Job-Zustaende aendern (nur solange etwas laeuft). */
+let stand = null;
+async function pruefen() {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    if (stand !== null && d.stand !== stand) location.reload();
+    stand = d.stand;
+    if (d.aktiv) setTimeout(pruefen, 5000);
+  } catch (e) { setTimeout(pruefen, 15000); }
+}
+pruefen();
+</script>
+{% endblock %}

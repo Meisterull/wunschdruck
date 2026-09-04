@@ -1,0 +1,26 @@
+{% extends "basis.html" %}
+{% block inhalt %}
+<section class="karte">
+  <h2>{{ t.slots_titel }}</h2>
+  {% if gespeichert %}<p class="ok">✅ {{ t.gespeichert }}</p>{% endif %}
+  <form action="/einstellungen" method="post">
+    {% for s in slots %}
+    <div class="reihe">
+      <span class="slotnummer">Slot {{ loop.index }}</span>
+      <label>{{ t.slot_material }}
+        <select name="material{{ loop.index }}">
+          {% for m in ('PLA', 'PETG', 'TPU', 'leer') %}
+          <option value="{{ m }}" {% if s.material == m %}selected{% endif %}>{{ t.leer if m == 'leer' else m }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>{{ t.slot_farbe }}
+        <input type="text" name="farbe{{ loop.index }}" value="{{ s.farbe }}" maxlength="40">
+      </label>
+    </div>
+    {% endfor %}
+    <button type="submit">💾 {{ t.speichern }}</button>
+  </form>
+</section>
+<p><a href="/">← {{ t.zurueck }}</a></p>
+{% endblock %}
