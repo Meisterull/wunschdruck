@@ -9,12 +9,13 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import db, i18n, konfig, moonraker, worker
+from . import db, i18n, konfig, moonraker, vorschau, worker
 
 logging.basicConfig(level=logging.INFO)
 
 ERLAUBTE_ENDUNGEN = {".stl", ".3mf"}
 AKTIVE_STATUS = {"neu", "slicet", "freigegeben", "sendet", "druckt"}
+MIT_GCODE = {"bereit", "freigegeben", "sendet", "druckt", "fertig"}
 
 
 @contextlib.asynccontextmanager
@@ -95,6 +96,30 @@ def loeschen(job_id: str):
         db.job_loeschen(job_id)
         shutil.rmtree(worker.job_dir(job_id), ignore_errors=True)
     return RedirectResponse("/", status_code=303)
+
+
+def _job_gcode(job_id: str) -> Path | None:
+    gcodes = sorted((worker.job_dir(job_id) / "ausgabe").glob("plate_*.gcode"))
+    return gcodes[0] if gcodes else None
+
+
+@app.get("/jobs/{job_id}/ansicht")
+def ansicht(request: Request, job_id: str):
+    sp = sprache(request)
+    zeile = db.job(job_id)
+    if not zeile or zeile["status"] not in MIT_GCODE or not _job_gcode(job_id):
+        return RedirectResponse("/", status_code=303)
+    return vorlagen.TemplateResponse(request, "ansicht.html", {
+        "t": i18n.t(sp), "sprache": sp, "job": zeile, "slots": db.slots(),
+    })
+
+
+@app.get("/jobs/{job_id}/vorschau")
+def vorschau_daten(job_id: str):
+    gcode = _job_gcode(job_id)
+    if not gcode:
+        return JSONResponse({"fehler": "kein G-Code"}, status_code=404)
+    return JSONResponse(vorschau.vorschau_laden(gcode))
 
 
 @app.get("/einstellungen")

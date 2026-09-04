@@ -1,0 +1,124 @@
+{% extends "basis.html" %}
+{% block inhalt %}
+<section class="karte">
+  <div class="jobkopf">
+    <strong>🧊 {{ job.name }}</strong>
+    <a href="/">← {{ t.zurueck }}</a>
+  </div>
+  <div id="buehne"></div>
+  <div class="regler">
+    <label style="flex:1">{{ t.ebenen }}: <span id="ebene_anzeige">–</span>
+      <input type="range" id="ebenen_regler" min="1" max="1" value="1" style="width:100%">
+    </label>
+  </div>
+  <p class="hinweis" id="legende"></p>
+</section>
+
+<script src="/statisch/three.min.js"></script>
+<script src="/statisch/OrbitControls.js"></script>
+<script>
+const WERKZEUG_FARBEN = ['#e08a4c', '#5b8dd9', '#5cb877', '#c95fa0'];
+const buehne = document.getElementById('buehne');
+const regler = document.getElementById('ebenen_regler');
+const anzeige = document.getElementById('ebene_anzeige');
+
+const szene = new THREE.Scene();
+szene.background = new THREE.Color(0x1c1a17);
+const kamera = new THREE.PerspectiveCamera(45, 1, 1, 4000);
+const renderer = new THREE.WebGLRenderer({antialias: true});
+buehne.appendChild(renderer.domElement);
+const steuerung = new THREE.OrbitControls(kamera, renderer.domElement);
+steuerung.enableDamping = true;
+
+function groesse() {
+  const b = buehne.clientWidth;
+  const h = Math.max(320, Math.min(window.innerHeight - 260, b));
+  renderer.setSize(b, h);
+  renderer.setPixelRatio(window.devicePixelRatio || 1);
+  kamera.aspect = b / h;
+  kamera.updateProjectionMatrix();
+}
+window.addEventListener('resize', groesse);
+
+const gruppen = [];  // {linien, offsets[layer] -> Vertexzahl}
+
+fetch(location.pathname.replace('/ansicht', '/vorschau'))
+  .then(r => r.json())
+  .then(daten => {
+    const [bx, by] = daten.bett;
+    // Druckbett: Raster + Umriss, Modellkoordinaten bleiben unverändert.
+    const raster = new THREE.GridHelper(Math.max(bx, by), Math.max(bx, by) / 10,
+                                        0x55504a, 0x33302c);
+    raster.rotation.x = Math.PI / 2;
+    raster.position.set(bx / 2, by / 2, 0);
+    szene.add(raster);
+    const umriss = new THREE.LineLoop(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0), new THREE.Vector3(bx, 0, 0),
+        new THREE.Vector3(bx, by, 0), new THREE.Vector3(0, by, 0)]),
+      new THREE.LineBasicMaterial({color: 0x8a8378}));
+    szene.add(umriss);
+
+    // Je (Werkzeug, Klasse) EIN LineSegments-Objekt; die Ebenen liegen darin
+    // aufsteigend, so schneidet der Regler per drawRange von unten nach oben.
+    const sammel = new Map();
+    daten.ebenen.forEach(eb => {
+      eb.spuren.forEach(sp => {
+        const key = sp.t + '|' + sp.k;
+        if (!sammel.has(key)) sammel.set(key, {t: sp.t, k: sp.k, ebenen: []});
+      });
+    });
+    sammel.forEach(gr => {
+      const punkte = [];
+      const offsets = [];
+      daten.ebenen.forEach(eb => {
+        eb.spuren.filter(sp => sp.t === gr.t && sp.k === gr.k).forEach(sp => {
+          const p = sp.p;
+          for (let i = 0; i + 3 < p.length; i += 2) {
+            punkte.push(p[i], p[i + 1], eb.z, p[i + 2], p[i + 3], eb.z);
+          }
+        });
+        offsets.push(punkte.length / 3);
+      });
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(punkte, 3));
+      const stuetze = gr.k === 'stuetze', rand = gr.k === 'rand';
+      const mat = new THREE.LineBasicMaterial({
+        color: stuetze ? '#8a8378' : (rand ? '#55504a' : WERKZEUG_FARBEN[gr.t % 4]),
+        transparent: stuetze || rand, opacity: stuetze ? 0.55 : (rand ? 0.35 : 1),
+      });
+      const linien = new THREE.LineSegments(geo, mat);
+      szene.add(linien);
+      gruppen.push({linien, offsets});
+    });
+
+    regler.max = daten.ebenen.length;
+    regler.value = daten.ebenen.length;
+    regler.addEventListener('input', ebenenSchnitt);
+    ebenenSchnitt();
+
+    const legende = daten.werkzeuge.map(w =>
+      `<span style="color:${WERKZEUG_FARBEN[w % 4]}">■</span> Slot ${w + 1}`);
+    legende.push('<span style="color:#8a8378">■</span> {{ t.stuetzen }}');
+    document.getElementById('legende').innerHTML = legende.join(' &nbsp; ');
+
+    const dist = Math.max(bx, by, daten.hoehe) * 1.6;
+    kamera.position.set(bx / 2 + dist * 0.55, by / 2 - dist * 0.75, dist * 0.7);
+    kamera.up.set(0, 0, 1);
+    steuerung.target.set(bx / 2, by / 2, daten.hoehe / 3);
+    groesse();
+  });
+
+function ebenenSchnitt() {
+  const k = parseInt(regler.value, 10);
+  anzeige.textContent = k + ' / ' + regler.max;
+  gruppen.forEach(gr => gr.linien.geometry.setDrawRange(0, (gr.offsets[k - 1] || 0)));
+}
+
+(function schleife() {
+  requestAnimationFrame(schleife);
+  steuerung.update();
+  renderer.render(szene, kamera);
+})();
+</script>
+{% endblock %}

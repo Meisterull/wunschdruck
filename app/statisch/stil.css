@@ -43,3 +43,10 @@ button.rot { background: var(--rot); }
           font-size: .8rem; overflow-x: auto; white-space: pre-wrap; color: var(--rot); }
 .slotnummer { font-weight: 600; align-self: center; }
 .drucker { font-size: .9rem; }
+a.knopf { display: inline-block; padding: .4rem .8rem; border: 1px solid var(--rand);
+          border-radius: 8px; background: var(--grund); color: var(--tinte);
+          text-decoration: none; font-size: .9rem; }
+#buehne { margin: .5rem 0; border-radius: 10px; overflow: hidden; touch-action: none; }
+#buehne canvas { display: block; }
+.regler { display: flex; gap: 1rem; align-items: center; }
+.regler input[type=range] { padding: 0; }

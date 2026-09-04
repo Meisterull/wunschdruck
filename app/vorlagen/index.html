@@ -62,6 +62,9 @@
     </div>
     {% if j.fehler_text %}<pre class="fehler">{{ j.fehler_text }}</pre>{% endif %}
     <div class="aktionen">
+      {% if j.status in ('bereit', 'freigegeben', 'sendet', 'druckt', 'fertig') %}
+      <a class="knopf" href="/jobs/{{ j.id }}/ansicht">🧊 {{ t.ansicht3d }}</a>
+      {% endif %}
       {% if j.status == 'bereit' %}
       <form action="/jobs/{{ j.id }}/drucken" method="post"><button class="gruen">▶️ {{ t.drucken }}</button></form>
       {% endif %}
