@@ -18,10 +18,15 @@ def konfiguriert() -> bool:
 
 
 def melden(text: str) -> None:
-    """Nachricht ueber den konfigurierten Notify-Dienst schicken (best-effort)."""
+    """Nachricht ueber den konfigurierten Notify-Dienst schicken (best-effort).
+
+    Markdown-Sonderzeichen werden entschaerft: HA-Telegram parst die Nachricht
+    als Markdown, und ein '_' aus einem Dateinamen (wuerfel_20mm.stl) liess
+    den Versand am 04.09.2026 mit 'Can't parse entities' platzen."""
     if not (konfiguriert() and konfig.HA_NOTIFY):
         return
     domain, dienst = konfig.HA_NOTIFY.split(".", 1)
+    text = text.translate(str.maketrans({z: " " for z in "_*`["}))
     try:
         httpx.post(f"{konfig.HA_URL}/api/services/{domain}/{dienst}",
                    headers=_kopf(), json={"message": text}, timeout=10)
