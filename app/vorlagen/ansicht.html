@@ -12,16 +12,25 @@
     </label>
   </div>
   <p class="hinweis" id="legende"></p>
+  <p class="hinweis">{{ t.ansicht_tipp }}</p>
 </section>
 
 <script src="/statisch/three.min.js"></script>
 <script src="/statisch/OrbitControls.js"></script>
 <script>
 // Werkzeugfarben = echte Slot-Farben aus dem Lager, Festpalette als Rückfall.
+// Sehr dunkle Farben (schwarzes Filament!) werden fürs Rendern aufgehellt,
+// sonst verschwinden sie vor der dunklen Bühne — der Druck bleibt natürlich schwarz.
 const RUECKFALL = ['#e08a4c', '#5b8dd9', '#5cb877', '#c95fa0'];
+function sichtbar(hex) {
+  const c = new THREE.Color(hex), hsl = {};
+  c.getHSL(hsl);
+  if (hsl.l < 0.22) c.setHSL(hsl.h, hsl.s, 0.22);
+  return '#' + c.getHexString();
+}
 const WERKZEUG_FARBEN = [
   {%- for s in slots %}'{{ s.get("hex") or "" }}',{% endfor -%}
-].map((h, i) => h || RUECKFALL[i % 4]);
+].map((h, i) => sichtbar(h || RUECKFALL[i % 4]));
 const buehne = document.getElementById('buehne');
 const regler = document.getElementById('ebenen_regler');
 const anzeige = document.getElementById('ebene_anzeige');
