@@ -17,7 +17,11 @@
 <script src="/statisch/three.min.js"></script>
 <script src="/statisch/OrbitControls.js"></script>
 <script>
-const WERKZEUG_FARBEN = ['#e08a4c', '#5b8dd9', '#5cb877', '#c95fa0'];
+// Werkzeugfarben = echte Slot-Farben aus dem Lager, Festpalette als Rückfall.
+const RUECKFALL = ['#e08a4c', '#5b8dd9', '#5cb877', '#c95fa0'];
+const WERKZEUG_FARBEN = [
+  {%- for s in slots %}'{{ s.get("hex") or "" }}',{% endfor -%}
+].map((h, i) => h || RUECKFALL[i % 4]);
 const buehne = document.getElementById('buehne');
 const regler = document.getElementById('ebenen_regler');
 const anzeige = document.getElementById('ebene_anzeige');

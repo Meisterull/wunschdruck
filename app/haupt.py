@@ -2,6 +2,7 @@
 import contextlib
 import json
 import logging
+import re
 import shutil
 from pathlib import Path
 
@@ -155,19 +156,56 @@ def vorschau_daten(job_id: str):
 def einstellungen(request: Request, gespeichert: bool = False):
     sp = sprache(request)
     return vorlagen.TemplateResponse(request, "einstellungen.html", {
-        "t": i18n.t(sp), "sprache": sp, "slots": db.slots(), "gespeichert": gespeichert,
+        "t": i18n.t(sp), "sprache": sp, "slots": db.slots(),
+        "lager": db.lager(), "gespeichert": gespeichert,
     })
+
+
+def _hex_sicher(wert: str) -> str:
+    wert = str(wert).strip()
+    return wert if re.fullmatch(r"#[0-9a-fA-F]{6}", wert) else "#9e9e9e"
+
+
+@app.post("/einstellungen/lager")
+async def lager_anlegen(request: Request):
+    """Filament ins Lager legen (Material + Farbname + Farbe)."""
+    formular = await request.form()
+    material = str(formular.get("material", "PLA"))
+    if material not in ("PLA", "PETG", "TPU"):
+        material = "PLA"
+    name = str(formular.get("name", "")).strip()[:40]
+    eintrag = {"material": material, "name": name,
+               "hex": _hex_sicher(formular.get("hex", ""))}
+    lager = db.lager()
+    lager.append(eintrag)
+    db.einstellung_setzen("lager", lager)
+    return RedirectResponse("/einstellungen", status_code=303)
+
+
+@app.post("/einstellungen/lager/{index}/loeschen")
+def lager_loeschen(index: int):
+    lager = db.lager()
+    if 0 <= index < len(lager):
+        lager.pop(index)
+        db.einstellung_setzen("lager", lager)
+    return RedirectResponse("/einstellungen", status_code=303)
 
 
 @app.post("/einstellungen")
 async def einstellungen_speichern(request: Request):
+    """Slots aus dem Lager bestücken. Der gewählte Lager-Eintrag wird in den
+    Slot KOPIERT — löscht man ihn später aus dem Lager, bleibt der Slot gültig."""
     formular = await request.form()
+    lager = db.lager()
     slots = []
     for i in range(1, 5):
-        material = str(formular.get(f"material{i}", "leer"))
-        if material not in ("PLA", "PETG", "TPU", "leer"):
-            material = "leer"
-        slots.append({"material": material, "farbe": str(formular.get(f"farbe{i}", ""))[:40]})
+        wahl = str(formular.get(f"slot{i}", "leer"))
+        if wahl.isdigit() and int(wahl) < len(lager):
+            eintrag = lager[int(wahl)]
+            slots.append({"material": eintrag["material"],
+                          "farbe": eintrag["name"], "hex": eintrag["hex"]})
+        else:
+            slots.append({"material": "leer", "farbe": "", "hex": ""})
     db.einstellung_setzen("slots", slots)
     return RedirectResponse("/einstellungen?gespeichert=1", status_code=303)
 

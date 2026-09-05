@@ -110,3 +110,8 @@ SLOTS_STANDARD = [
 
 def slots() -> list[dict]:
     return einstellung("slots", SLOTS_STANDARD)
+
+
+def lager() -> list[dict]:
+    """Filament-Lager: was zuhause vorrätig ist ({material, name, hex})."""
+    return einstellung("lager", [])

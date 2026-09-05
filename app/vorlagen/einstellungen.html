@@ -1,21 +1,53 @@
 {% extends "basis.html" %}
 {% block inhalt %}
 <section class="karte">
+  <h2>🗄️ {{ t.lager_titel }}</h2>
+  {% if not lager %}<p class="hinweis">{{ t.lager_leer }}</p>{% endif %}
+  {% for f in lager %}
+  <div class="lagerzeile">
+    <span class="farbchip" style="background: {{ f.hex }}"></span>
+    <span class="lagername">{{ f.material }}{% if f.name %} — {{ f.name }}{% endif %}</span>
+    <form action="/einstellungen/lager/{{ loop.index0 }}/loeschen" method="post">
+      <button class="rot klein">🗑️</button>
+    </form>
+  </div>
+  {% endfor %}
+  <form action="/einstellungen/lager" method="post" class="reihe lagerform">
+    <label>{{ t.slot_material }}
+      <select name="material">
+        <option>PLA</option><option>PETG</option><option>TPU</option>
+      </select>
+    </label>
+    <label>{{ t.farbname }}
+      <input type="text" name="name" maxlength="40" placeholder="{{ t.farbname_beispiel }}">
+    </label>
+    <label>{{ t.farbe }}
+      <input type="color" name="hex" value="#d96b2b">
+    </label>
+    <button type="submit">➕ {{ t.hinzufuegen }}</button>
+  </form>
+</section>
+
+<section class="karte">
   <h2>{{ t.slots_titel }}</h2>
+  <p class="hinweis">{{ t.slots_hinweis }}</p>
   {% if gespeichert %}<p class="ok">✅ {{ t.gespeichert }}</p>{% endif %}
   <form action="/einstellungen" method="post">
     {% for s in slots %}
     <div class="reihe">
-      <span class="slotnummer">Slot {{ loop.index }}</span>
-      <label>{{ t.slot_material }}
-        <select name="material{{ loop.index }}">
-          {% for m in ('PLA', 'PETG', 'TPU', 'leer') %}
-          <option value="{{ m }}" {% if s.material == m %}selected{% endif %}>{{ t.leer if m == 'leer' else m }}</option>
+      <span class="slotnummer">Slot {{ loop.index }}
+        {% if s.material != 'leer' %}<span class="farbchip" style="background: {{ s.hex or '#9e9e9e' }}"></span>{% endif %}
+      </span>
+      <label>{{ t.slot_inhalt }}
+        <select name="slot{{ loop.index }}">
+          <option value="leer">{{ t.leer }}</option>
+          {% for f in lager %}
+          <option value="{{ loop.index0 }}"
+            {% if s.material == f.material and s.farbe == f.name %}selected{% endif %}>
+            {{ f.material }}{% if f.name %} — {{ f.name }}{% endif %}
+          </option>
           {% endfor %}
         </select>
-      </label>
-      <label>{{ t.slot_farbe }}
-        <input type="text" name="farbe{{ loop.index }}" value="{{ s.farbe }}" maxlength="40">
       </label>
     </div>
     {% endfor %}

@@ -45,6 +45,12 @@ button.rot { background: var(--rot); }
 .farbchip { display: inline-block; width: 1em; height: 1em; border-radius: 4px;
             border: 1px solid var(--rand); vertical-align: -0.15em; }
 .farbwahl { margin-top: .5rem; border-top: 1px solid var(--rand); padding-top: .5rem; }
+.lagerzeile { display: flex; align-items: center; gap: .6rem; padding: .3rem 0;
+              border-bottom: 1px solid var(--rand); }
+.lagerzeile .lagername { flex: 1; }
+.lagerform { margin-top: .8rem; }
+button.klein { padding: .25rem .55rem; font-size: .85rem; }
+input[type=color] { padding: .1rem; height: 2.4rem; cursor: pointer; }
 .drucker { font-size: .9rem; }
 a.knopf { display: inline-block; padding: .4rem .8rem; border: 1px solid var(--rand);
           border-radius: 8px; background: var(--grund); color: var(--tinte);
