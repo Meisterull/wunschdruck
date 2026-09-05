@@ -54,6 +54,12 @@
           {% endfor %}
         </select>
       </label>
+      <label>{{ t.ausrichtung }}
+        <select name="ausrichtung">
+          <option value="auto">{{ t.ausrichtung_auto }}</option>
+          <option value="datei">{{ t.ausrichtung_datei }}</option>
+        </select>
+      </label>
       <label>{{ t.platte }}
         <input type="number" name="platte" value="1" min="1" max="16">
       </label>
@@ -75,7 +81,8 @@
     <div class="jobdaten">
       {% if j.dauer_s %}⏱️ {{ t.dauer }}: {{ dauer_text(j.dauer_s) }} · {% endif %}
       {% if j.filament_g %}🧵 {{ t.filament }}: {{ '%.1f'|format(j.filament_g) }} g · {% endif %}
-      Slot {{ j.slot }} · {{ t[j.qualitaet] }}
+      Slot {{ j.slot }} · {{ t[j.qualitaet] if j.qualitaet in t else j.qualitaet[6:] }}
+      {%- if j.ausrichtung == 'datei' %} · 📌 {{ t.ausrichtung_datei }}{% endif %}
     </div>
     {% if j.fehler_text %}<pre class="fehler">{{ j.fehler_text }}</pre>{% endif %}
     {% if j.status == 'farbwahl' and farben_jobs.get(j.id) %}

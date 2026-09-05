@@ -64,6 +64,7 @@ def _slicer_lauf():
 
             # Stuetz-Filament nur wirksam, wenn Stuetzen ueberhaupt an sind.
             stuetz_slot = (zeile["stuetz_slot"] or 0) if zeile["stuetzen"] else 0
+            ausrichtung = zeile["ausrichtung"] or "auto"
 
             if len(analyse["farben"]) >= 2 and zuordnung:
                 zuordnung_int = {int(nr): slot for nr, slot in zuordnung.items()}
@@ -77,7 +78,8 @@ def _slicer_lauf():
                     ergebnis = slicer.slicen(
                         quelle, ordner / "ausgabe", "PLA", zeile["qualitaet"],
                         bool(zeile["stuetzen"]), 1, zeile["platte"],
-                        slot_materialien=slot_materialien, stuetz_slot=stuetz_slot)
+                        slot_materialien=slot_materialien, stuetz_slot=stuetz_slot,
+                        ausrichtung=ausrichtung)
                 else:
                     # Robuster Weg: Geometrie selbst zerlegen (ein STL je Slot),
                     # Platzierung übernehmen WIR — Ausrichtung bleibt wie im Modell.
@@ -97,7 +99,8 @@ def _slicer_lauf():
                 ergebnis = slicer.slicen(
                     quelle, ordner / "ausgabe", material, zeile["qualitaet"],
                     bool(zeile["stuetzen"]), zeile["slot"], zeile["platte"],
-                    slot_materialien=slot_materialien, stuetz_slot=stuetz_slot)
+                    slot_materialien=slot_materialien, stuetz_slot=stuetz_slot,
+                    ausrichtung=ausrichtung)
             db.job_update(job_id, status="bereit",
                           dauer_s=ergebnis["dauer_s"], filament_g=ergebnis["filament_g"])
             ha.melden(_texte()["meldung_bereit"].format(

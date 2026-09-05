@@ -66,7 +66,7 @@ def index(request: Request):
 async def hochladen(request: Request, datei: UploadFile = File(...),
                     slot: int = Form(1), qualitaet: str = Form("standard"),
                     stuetzen: str = Form("auto"), platte: int = Form(1),
-                    stuetz_slot: int = Form(0)):
+                    stuetz_slot: int = Form(0), ausrichtung: str = Form("auto")):
     endung = Path(datei.filename or "").suffix.lower()
     qualitaet_ok = (qualitaet in ("fein", "standard", "schnell")
                     or (qualitaet.startswith("eigen:")
@@ -76,7 +76,8 @@ async def hochladen(request: Request, datei: UploadFile = File(...),
     slot = min(max(slot, 1), 4)
     job_id = db.job_anlegen(Path(datei.filename).name, slot, qualitaet,
                             stuetzen == "auto", max(platte, 1),
-                            stuetz_slot=min(max(stuetz_slot, 0), 4))
+                            stuetz_slot=min(max(stuetz_slot, 0), 4),
+                            ausrichtung="datei" if ausrichtung == "datei" else "auto")
     ordner = worker.job_dir(job_id)
     ordner.mkdir(parents=True, exist_ok=True)
     with (ordner / f"quelle{endung}").open("wb") as ziel:

@@ -40,7 +40,8 @@ def _conn() -> sqlite3.Connection:
         c.executescript(SCHEMA)
         # Nachrüst-Spalten für Bestands-Datenbanken
         for spalte in ("farben TEXT", "zuordnung TEXT",
-                       "stuetz_slot INTEGER NOT NULL DEFAULT 0"):
+                       "stuetz_slot INTEGER NOT NULL DEFAULT 0",
+                       "ausrichtung TEXT NOT NULL DEFAULT 'auto'"):
             try:
                 c.execute(f"ALTER TABLE jobs ADD COLUMN {spalte}")
             except sqlite3.OperationalError:
@@ -50,14 +51,14 @@ def _conn() -> sqlite3.Connection:
 
 
 def job_anlegen(name: str, slot: int, qualitaet: str, stuetzen: bool, platte: int,
-                stuetz_slot: int = 0) -> str:
+                stuetz_slot: int = 0, ausrichtung: str = "auto") -> str:
     job_id = uuid.uuid4().hex[:8]
     with _conn() as c:
         c.execute(
-            "INSERT INTO jobs (id,name,status,slot,qualitaet,stuetzen,platte,erstellt,stuetz_slot)"
-            " VALUES (?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO jobs (id,name,status,slot,qualitaet,stuetzen,platte,erstellt,"
+            "stuetz_slot,ausrichtung) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (job_id, name, "neu", slot, qualitaet, int(stuetzen), platte, time.time(),
-             stuetz_slot),
+             stuetz_slot, ausrichtung),
         )
     return job_id
 

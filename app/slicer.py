@@ -104,7 +104,7 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
            stuetzen: bool, slot: int, platte: int,
            slot_materialien: list[str] | None = None,
            gruppen: list[tuple[Path, int]] | None = None,
-           stuetz_slot: int = 0) -> dict:
+           stuetz_slot: int = 0, ausrichtung: str = "auto") -> dict:
     """Modell slicen; liefert {'gcode': Path, 'dauer_s': int, 'filament_g': float}.
 
     slot_materialien (Mehrfarb-Pfad): Materialien der 4 physischen Slots in
@@ -142,9 +142,12 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
             for m in slot_materialien)
     else:
         filamente = ";".join([str(filament)] * slot)
+    # "wie in Datei": Rotation unangetastet lassen (--orient 0), die Platzierung
+    # auf der Platte übernimmt weiterhin --arrange.
+    orient = "1" if ausrichtung == "auto" else "0"
     kommando = [
         konfig.ORCA_APPRUN, "--debug", "1", "--allow-newer-file",
-        "--slice", str(platte), "--arrange", "1", "--orient", "1",
+        "--slice", str(platte), "--arrange", "1", "--orient", orient,
         "--load-settings", f"{maschine};{prozess}",
         "--load-filaments", filamente,
         "--export-3mf", "projekt.gcode.3mf",
