@@ -54,5 +54,25 @@
     <button type="submit">💾 {{ t.speichern }}</button>
   </form>
 </section>
+<section class="karte">
+  <h2>📐 {{ t.profile_titel }}</h2>
+  {% if profilfehler %}<p class="fehler">{{ t.profil_fehler }}</p>{% endif %}
+  {% if not eigene_profile %}<p class="hinweis">{{ t.profile_leer }}</p>{% endif %}
+  {% for p in eigene_profile %}
+  <div class="lagerzeile">
+    <span class="lagername">📐 {{ p }}</span>
+    <form action="/einstellungen/profil/{{ p }}/loeschen" method="post">
+      <button class="rot klein">🗑️</button>
+    </form>
+  </div>
+  {% endfor %}
+  <form action="/einstellungen/profil" method="post" enctype="multipart/form-data" class="lagerform">
+    <label>{{ t.profil_datei }}
+      <input type="file" name="datei" accept=".json" required>
+    </label>
+    <button type="submit">📥 {{ t.profil_importieren }}</button>
+  </form>
+  <p class="hinweis">{{ t.profil_hinweis }}</p>
+</section>
 <p><a href="/">← {{ t.zurueck }}</a></p>
 {% endblock %}

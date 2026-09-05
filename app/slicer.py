@@ -12,9 +12,12 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from werkzeuge.profil_flatten import flach, profil_index
+from werkzeuge.profil_flatten import CLI_GIFTIG, flach, profil_index
 
 from . import konfig
+
+# Aus dem Desktop-Orca exportierte Prozess-Profile ("Druckprofile") des Nutzers.
+EIGENE_PROFILE = konfig.DATEN_DIR / "profile-eigene"
 
 MASCHINE = "Snapmaker U1 (0.4 nozzle)"
 QUALITAET_PROFIL = {
@@ -41,6 +44,35 @@ def _profil_pfad(name: str) -> Path:
             _index_cache = profil_index(konfig.PROFILDIR)
         ziel.write_text(json.dumps(flach(name, _index_cache), indent=2, ensure_ascii=False))
     return ziel
+
+
+def eigene_profile() -> list[str]:
+    if not EIGENE_PROFILE.exists():
+        return []
+    return sorted(p.stem for p in EIGENE_PROFILE.glob("*.json"))
+
+
+def eigenes_profil_importieren(roh: bytes) -> str:
+    """Exportiertes Orca-Prozessprofil (JSON) übernehmen: Vererbung gegen die
+    Vendor-Profile auflösen, CLI-giftige Schlüssel entfernen, ablegen."""
+    global _index_cache
+    daten = json.loads(roh)
+    if daten.get("type") != "process":
+        raise ValueError("Kein Druckprofil: im JSON steht nicht type=process")
+    name = re.sub(r"[^\w\-. ]", "_", str(daten.get("name") or "Eigenes Profil")).strip()[:60]
+    eltern = daten.pop("inherits", None)
+    if eltern:
+        if _index_cache is None:
+            _index_cache = profil_index(konfig.PROFILDIR)
+        basis = flach(eltern, _index_cache)
+        basis.update(daten)
+        daten = basis
+    for schluessel in CLI_GIFTIG:
+        daten.pop(schluessel, None)
+    EIGENE_PROFILE.mkdir(parents=True, exist_ok=True)
+    (EIGENE_PROFILE / f"{name}.json").write_text(
+        json.dumps(daten, indent=2, ensure_ascii=False), encoding="utf-8")
+    return name
 
 
 def _dauer_sekunden(text: str) -> int:
@@ -71,7 +103,8 @@ def gcode_metadaten(gcode: Path) -> dict:
 def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
            stuetzen: bool, slot: int, platte: int,
            slot_materialien: list[str] | None = None,
-           gruppen: list[tuple[Path, int]] | None = None) -> dict:
+           gruppen: list[tuple[Path, int]] | None = None,
+           stuetz_slot: int = 0) -> dict:
     """Modell slicen; liefert {'gcode': Path, 'dauer_s': int, 'filament_g': float}.
 
     slot_materialien (Mehrfarb-Pfad): Materialien der 4 physischen Slots in
@@ -87,10 +120,17 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
     filament = _profil_pfad(MATERIAL_PROFIL[material])
 
     # Prozessprofil pro Job kopieren und die Stuetzen-Wahl hineinschreiben.
-    prozess_basis = json.loads(_profil_pfad(QUALITAET_PROFIL[qualitaet]).read_text())
+    if qualitaet.startswith("eigen:"):
+        prozess_basis = json.loads((EIGENE_PROFILE / f"{qualitaet[6:]}.json").read_text())
+    else:
+        prozess_basis = json.loads(_profil_pfad(QUALITAET_PROFIL[qualitaet]).read_text())
     prozess_basis["enable_support"] = "1" if stuetzen else "0"
     if stuetzen:
         prozess_basis.setdefault("support_type", "tree(auto)")
+    if stuetzen and stuetz_slot:
+        # Stuetzen (Basis + Kontaktflaeche) aus einem eigenen Slot drucken.
+        prozess_basis["support_filament"] = str(stuetz_slot)
+        prozess_basis["support_interface_filament"] = str(stuetz_slot)
     prozess = ziel_dir / "prozess.json"
     prozess.write_text(json.dumps(prozess_basis))
 
@@ -111,7 +151,7 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
         "--outputdir", str(ziel_dir),
         str(quelle),
     ]
-    if slot > 1 and not slot_materialien:
+    if slot > 1 and not gruppen:
         kommando[1:1] = ["--load-filament-ids", str(slot)]
 
     if gruppen:

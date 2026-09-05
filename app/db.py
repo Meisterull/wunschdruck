@@ -38,8 +38,9 @@ def _conn() -> sqlite3.Connection:
         c.row_factory = sqlite3.Row
         c.execute("PRAGMA journal_mode=WAL")
         c.executescript(SCHEMA)
-        # Nachrüst-Spalten (Mehrfarb-Stufe) für Bestands-Datenbanken
-        for spalte in ("farben TEXT", "zuordnung TEXT"):
+        # Nachrüst-Spalten für Bestands-Datenbanken
+        for spalte in ("farben TEXT", "zuordnung TEXT",
+                       "stuetz_slot INTEGER NOT NULL DEFAULT 0"):
             try:
                 c.execute(f"ALTER TABLE jobs ADD COLUMN {spalte}")
             except sqlite3.OperationalError:
@@ -48,12 +49,15 @@ def _conn() -> sqlite3.Connection:
     return _lokal.conn
 
 
-def job_anlegen(name: str, slot: int, qualitaet: str, stuetzen: bool, platte: int) -> str:
+def job_anlegen(name: str, slot: int, qualitaet: str, stuetzen: bool, platte: int,
+                stuetz_slot: int = 0) -> str:
     job_id = uuid.uuid4().hex[:8]
     with _conn() as c:
         c.execute(
-            "INSERT INTO jobs (id,name,status,slot,qualitaet,stuetzen,platte,erstellt) VALUES (?,?,?,?,?,?,?,?)",
-            (job_id, name, "neu", slot, qualitaet, int(stuetzen), platte, time.time()),
+            "INSERT INTO jobs (id,name,status,slot,qualitaet,stuetzen,platte,erstellt,stuetz_slot)"
+            " VALUES (?,?,?,?,?,?,?,?,?)",
+            (job_id, name, "neu", slot, qualitaet, int(stuetzen), platte, time.time(),
+             stuetz_slot),
         )
     return job_id
 

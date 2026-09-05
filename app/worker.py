@@ -62,6 +62,9 @@ def _slicer_lauf():
             analyse = json.loads(farben_roh) if farben_roh else {"farben": [], "fein": False}
             zuordnung = json.loads(zeile["zuordnung"]) if zeile["zuordnung"] else None
 
+            # Stuetz-Filament nur wirksam, wenn Stuetzen ueberhaupt an sind.
+            stuetz_slot = (zeile["stuetz_slot"] or 0) if zeile["stuetzen"] else 0
+
             if len(analyse["farben"]) >= 2 and zuordnung:
                 zuordnung_int = {int(nr): slot for nr, slot in zuordnung.items()}
                 slot_materialien = [s["material"] for s in slots]
@@ -74,7 +77,7 @@ def _slicer_lauf():
                     ergebnis = slicer.slicen(
                         quelle, ordner / "ausgabe", "PLA", zeile["qualitaet"],
                         bool(zeile["stuetzen"]), 1, zeile["platte"],
-                        slot_materialien=slot_materialien)
+                        slot_materialien=slot_materialien, stuetz_slot=stuetz_slot)
                 else:
                     # Robuster Weg: Geometrie selbst zerlegen (ein STL je Slot),
                     # Platzierung übernehmen WIR — Ausrichtung bleibt wie im Modell.
@@ -82,14 +85,19 @@ def _slicer_lauf():
                     ergebnis = slicer.slicen(
                         quelle, ordner / "ausgabe", "PLA", zeile["qualitaet"],
                         bool(zeile["stuetzen"]), 1, zeile["platte"],
-                        slot_materialien=slot_materialien, gruppen=gruppen)
+                        slot_materialien=slot_materialien, gruppen=gruppen,
+                        stuetz_slot=stuetz_slot)
             else:
                 # Einfarbige 3MFs entgiften (CLI-giftige eingebettete Settings).
                 if quelle.suffix.lower() == ".3mf":
                     quelle = dreimf.ummappen(quelle, ordner / f"gemappt{quelle.suffix}", {})
+                # Stuetzen aus anderem Slot brauchen alle 4 Filament-Profile.
+                slot_materialien = ([s["material"] for s in slots]
+                                    if stuetz_slot and stuetz_slot != zeile["slot"] else None)
                 ergebnis = slicer.slicen(
                     quelle, ordner / "ausgabe", material, zeile["qualitaet"],
-                    bool(zeile["stuetzen"]), zeile["slot"], zeile["platte"])
+                    bool(zeile["stuetzen"]), zeile["slot"], zeile["platte"],
+                    slot_materialien=slot_materialien, stuetz_slot=stuetz_slot)
             db.job_update(job_id, status="bereit",
                           dauer_s=ergebnis["dauer_s"], filament_g=ergebnis["filament_g"])
             ha.melden(_texte()["meldung_bereit"].format(

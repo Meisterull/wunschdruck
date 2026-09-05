@@ -29,12 +29,29 @@
           <option value="standard">{{ t.standard }}</option>
           <option value="fein">{{ t.fein }}</option>
           <option value="schnell">{{ t.schnell }}</option>
+          {% if eigene_profile %}
+          <optgroup label="{{ t.profile_gruppe }}">
+            {% for p in eigene_profile %}
+            <option value="eigen:{{ p }}">{{ p }}</option>
+            {% endfor %}
+          </optgroup>
+          {% endif %}
         </select>
       </label>
       <label>{{ t.stuetzen }}
         <select name="stuetzen">
           <option value="auto">{{ t.stuetzen_auto }}</option>
           <option value="aus">{{ t.stuetzen_aus }}</option>
+        </select>
+      </label>
+      <label>{{ t.stuetz_filament }}
+        <select name="stuetz_slot">
+          <option value="0">{{ t.wie_modell }}</option>
+          {% for s in slots %}
+          <option value="{{ loop.index }}" {% if s.material == 'leer' %}disabled{% endif %}>
+            Slot {{ loop.index }} — {{ t.leer if s.material == 'leer' else s.material }}{% if s.farbe %} ({{ s.farbe }}){% endif %}
+          </option>
+          {% endfor %}
         </select>
       </label>
       <label>{{ t.platte }}

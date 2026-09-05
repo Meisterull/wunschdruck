@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import db, i18n, konfig, moonraker, vorschau, worker
+from . import db, i18n, konfig, moonraker, slicer, vorschau, worker
 
 logging.basicConfig(level=logging.INFO)
 
@@ -58,19 +58,25 @@ def index(request: Request):
         "drucker": drucker_status(),
         "aktive_status": AKTIVE_STATUS,
         "farben_jobs": farben_jobs,
+        "eigene_profile": slicer.eigene_profile(),
     })
 
 
 @app.post("/hochladen")
 async def hochladen(request: Request, datei: UploadFile = File(...),
                     slot: int = Form(1), qualitaet: str = Form("standard"),
-                    stuetzen: str = Form("auto"), platte: int = Form(1)):
+                    stuetzen: str = Form("auto"), platte: int = Form(1),
+                    stuetz_slot: int = Form(0)):
     endung = Path(datei.filename or "").suffix.lower()
-    if endung not in ERLAUBTE_ENDUNGEN or qualitaet not in ("fein", "standard", "schnell"):
+    qualitaet_ok = (qualitaet in ("fein", "standard", "schnell")
+                    or (qualitaet.startswith("eigen:")
+                        and qualitaet[6:] in slicer.eigene_profile()))
+    if endung not in ERLAUBTE_ENDUNGEN or not qualitaet_ok:
         return RedirectResponse("/?fehler=format", status_code=303)
     slot = min(max(slot, 1), 4)
     job_id = db.job_anlegen(Path(datei.filename).name, slot, qualitaet,
-                            stuetzen == "auto", max(platte, 1))
+                            stuetzen == "auto", max(platte, 1),
+                            stuetz_slot=min(max(stuetz_slot, 0), 4))
     ordner = worker.job_dir(job_id)
     ordner.mkdir(parents=True, exist_ok=True)
     with (ordner / f"quelle{endung}").open("wb") as ziel:
@@ -153,12 +159,32 @@ def vorschau_daten(job_id: str):
 
 
 @app.get("/einstellungen")
-def einstellungen(request: Request, gespeichert: bool = False):
+def einstellungen(request: Request, gespeichert: bool = False, profilfehler: bool = False):
     sp = sprache(request)
     return vorlagen.TemplateResponse(request, "einstellungen.html", {
         "t": i18n.t(sp), "sprache": sp, "slots": db.slots(),
         "lager": db.lager(), "gespeichert": gespeichert,
+        "eigene_profile": slicer.eigene_profile(), "profilfehler": profilfehler,
     })
+
+
+@app.post("/einstellungen/profil")
+async def profil_importieren(datei: UploadFile = File(...)):
+    """Aus dem Desktop-Orca exportiertes Druckprofil (JSON) übernehmen."""
+    try:
+        slicer.eigenes_profil_importieren(await datei.read())
+    except Exception:
+        logging.getLogger("wunschdruck").exception("Profil-Import fehlgeschlagen")
+        return RedirectResponse("/einstellungen?profilfehler=1", status_code=303)
+    return RedirectResponse("/einstellungen?gespeichert=1", status_code=303)
+
+
+@app.post("/einstellungen/profil/{name}/loeschen")
+def profil_loeschen(name: str):
+    pfad = slicer.EIGENE_PROFILE / f"{Path(name).name}.json"
+    if pfad.exists():
+        pfad.unlink()
+    return RedirectResponse("/einstellungen", status_code=303)
 
 
 def _hex_sicher(wert: str) -> str:
