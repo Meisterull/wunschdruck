@@ -155,6 +155,11 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
         prozess_basis = json.loads((EIGENE_PROFILE / f"{qualitaet[6:]}.json").read_text())
     else:
         prozess_basis = json.loads(_profil_pfad(QUALITAET_PROFIL[qualitaet]).read_text())
+    # Keine G2/G3-Bögen: ob die U1-Klipper-Firmware gcode_arcs kann, ist
+    # unverifiziert (der Snapmaker-Fork schreibt selbst keine), und Vanilla
+    # hätte Arc-Fitting sonst an (04.09.: Bögen wurden in der Vorschau zu
+    # Sehnen quer durchs Modell — "Spinnennetz").
+    prozess_basis["enable_arc_fitting"] = "0"
     prozess_basis["enable_support"] = "1" if stuetzen else "0"
     if stuetzen:
         prozess_basis.setdefault("support_type", "tree(auto)")

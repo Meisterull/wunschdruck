@@ -6,6 +6,7 @@ Polylinien je Ebene und (Werkzeug, Klasse). Klassen: 'teil', 'stuetze'
 damit auch große Drucke handy-tauglich bleiben.
 """
 import json
+import math
 import re
 from pathlib import Path
 
@@ -53,8 +54,11 @@ def gcode_vorschau(gcode: Path) -> dict:
         nonlocal spuren_der_ebene, spur
         spur = None
         if spuren_der_ebene and ebenen:
+            # Polylinien MUESSEN getrennt bleiben ("l" = Liste von Bahnen):
+            # flach verkettet zeichnet der Viewer auch die Naht zwischen zwei
+            # Bahnen — bei mehrteiligen Modellen ein Phantom-"Spinnennetz".
             ebenen[-1]["spuren"] = [
-                {"t": t, "k": k, "p": [rund for linie in linien for rund in linie]}
+                {"t": t, "k": k, "l": [linie for linie in linien if len(linie) >= 4]}
                 for (t, k), linien in spuren_der_ebene.items()
             ]
         spuren_der_ebene = {}
@@ -94,6 +98,7 @@ def gcode_vorschau(gcode: Path) -> dict:
             wort = befehl.split(None, 1)[0]
             if wort in ("G1", "G0", "G2", "G3"):
                 nx, ny, ne = x, y, None
+                bi = bj = None
                 for teil in befehl.split()[1:]:
                     achse, wert = teil[0], teil[1:]
                     try:
@@ -108,6 +113,10 @@ def gcode_vorschau(gcode: Path) -> dict:
                         z = w
                     elif achse in ("E", "e"):
                         ne = w
+                    elif achse in ("I", "i"):
+                        bi = w
+                    elif achse in ("J", "j"):
+                        bj = w
             elif wort == "M83":
                 e_relativ = True
                 continue
@@ -132,6 +141,23 @@ def gcode_vorschau(gcode: Path) -> dict:
                 e = ne
             if (nx != x or ny != y):
                 if extrudiert and ebenen:
+                    # G2/G3-Bögen (Arc-Fitting) tesselieren — nur die Sehne zu
+                    # zeichnen malt lange Geraden quer durchs Modell.
+                    if wort in ("G2", "G3") and bi is not None and bj is not None:
+                        cx, cy = x + bi, y + bj
+                        r = math.hypot(x - cx, y - cy)
+                        a0 = math.atan2(y - cy, x - cx)
+                        a1 = math.atan2(ny - cy, nx - cx)
+                        if wort == "G2":  # im Uhrzeigersinn
+                            while a1 >= a0:
+                                a1 -= 2 * math.pi
+                        else:
+                            while a1 <= a0:
+                                a1 += 2 * math.pi
+                        schritte = max(2, min(64, int(abs(a1 - a0) / 0.2)))
+                        for s in range(1, schritte):
+                            a = a0 + (a1 - a0) * s / schritte
+                            punkt_anfuegen(cx + r * math.cos(a), cy + r * math.sin(a))
                     punkt_anfuegen(nx, ny)
                 else:
                     spur = None  # Travel bricht die Polylinie
@@ -145,8 +171,8 @@ def gcode_vorschau(gcode: Path) -> dict:
 
 def vorschau_laden(gcode: Path) -> dict:
     """Vorschau aus dem Cache neben dem G-Code, bei Bedarf frisch gerechnet.
-    (Suffix v2: Klassen-Schema mit 'fuellung' — alte Caches nicht wiederverwenden.)"""
-    cache = gcode.with_suffix(".vorschau2.json")
+    (Suffix v4: Klassen-Schema + Arc-Tesselation mit 'fuellung' — alte Caches nicht wiederverwenden.)"""
+    cache = gcode.with_suffix(".vorschau4.json")
     if cache.exists() and cache.stat().st_mtime >= gcode.stat().st_mtime:
         return json.loads(cache.read_text())
     daten = gcode_vorschau(gcode)

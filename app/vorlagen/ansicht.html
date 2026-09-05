@@ -87,10 +87,11 @@ fetch(location.pathname.replace('/ansicht', '/vorschau'))
       const offsets = [];
       daten.ebenen.forEach(eb => {
         eb.spuren.filter(sp => sp.t === gr.t && sp.k === gr.k).forEach(sp => {
-          const p = sp.p;
-          for (let i = 0; i + 3 < p.length; i += 2) {
-            punkte.push(p[i], p[i + 1], eb.z, p[i + 2], p[i + 3], eb.z);
-          }
+          sp.l.forEach(p => {  // jede Bahn einzeln — keine Phantom-Nähte
+            for (let i = 0; i + 3 < p.length; i += 2) {
+              punkte.push(p[i], p[i + 1], eb.z, p[i + 2], p[i + 3], eb.z);
+            }
+          });
         });
         offsets.push(punkte.length / 3);
       });
