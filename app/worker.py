@@ -69,7 +69,10 @@ def _slicer_lauf():
             ausrichtung = zeile["ausrichtung"] or "auto"
             anzahl = zeile["anzahl"] or 1
             extra = {"fuellung": zeile["fuellung"],
-                     "stuetz_art": zeile["stuetz_art"] or "profil"}
+                     "stuetz_art": zeile["stuetz_art"] or "profil",
+                     "waende": zeile["waende"],
+                     "deckschichten": zeile["deckschichten"],
+                     "bodenschichten": zeile["bodenschichten"]}
 
             if len(analyse["farben"]) >= 2 and zuordnung:
                 # Mehrfarb-Projekt: Paint-Codes/Extruder auf die Ziel-Slots

@@ -70,6 +70,15 @@
           <option value="normal">{{ t.stuetz_normal }}</option>
         </select>
       </label>
+      <label>{{ t.waende }}
+        <input type="number" name="waende" min="1" max="10" placeholder="{{ t.profil_standard }}">
+      </label>
+      <label>{{ t.deckschichten }}
+        <input type="number" name="deckschichten" min="0" max="15" placeholder="{{ t.profil_standard }}">
+      </label>
+      <label>{{ t.bodenschichten }}
+        <input type="number" name="bodenschichten" min="0" max="15" placeholder="{{ t.profil_standard }}">
+      </label>
       <label>{{ t.anzahl }}
         <input type="number" name="anzahl" value="1" min="1" max="25">
       </label>
@@ -211,6 +220,18 @@
               <option value="baum" {% if j.stuetz_art == 'baum' %}selected{% endif %}>{{ t.stuetz_baum }}</option>
               <option value="normal" {% if j.stuetz_art == 'normal' %}selected{% endif %}>{{ t.stuetz_normal }}</option>
             </select>
+          </label>
+          <label>{{ t.waende }}
+            <input type="number" name="waende" min="1" max="10"
+                   value="{{ j.waende if j.waende is not none else '' }}" placeholder="{{ t.profil_standard }}">
+          </label>
+          <label>{{ t.deckschichten }}
+            <input type="number" name="deckschichten" min="0" max="15"
+                   value="{{ j.deckschichten if j.deckschichten is not none else '' }}" placeholder="{{ t.profil_standard }}">
+          </label>
+          <label>{{ t.bodenschichten }}
+            <input type="number" name="bodenschichten" min="0" max="15"
+                   value="{{ j.bodenschichten if j.bodenschichten is not none else '' }}" placeholder="{{ t.profil_standard }}">
           </label>
         </div>
         {% if j.id in mehrfarb_jobs %}

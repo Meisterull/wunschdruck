@@ -145,7 +145,9 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
            gruppen: list[tuple[Path, int]] | None = None,
            stuetz_slot: int = 0, ausrichtung: str = "auto",
            anzahl: int = 1, mehrfarb_projekt: bool = False,
-           fuellung: int | None = None, stuetz_art: str = "profil") -> dict:
+           fuellung: int | None = None, stuetz_art: str = "profil",
+           waende: int | None = None, deckschichten: int | None = None,
+           bodenschichten: int | None = None) -> dict:
     """Modell slicen; liefert {'gcode': Path, 'dauer_s': int, 'filament_g': float}.
 
     slot_materialien (Mehrfarb-Pfad): Materialien der 4 physischen Slots in
@@ -176,6 +178,12 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
     prozess_basis["enable_support"] = "1" if stuetzen else "0"
     if fuellung is not None:
         prozess_basis["sparse_infill_density"] = f"{fuellung}%"
+    if waende:
+        prozess_basis["wall_loops"] = str(waende)
+    if deckschichten is not None:
+        prozess_basis["top_shell_layers"] = str(deckschichten)
+    if bodenschichten is not None:
+        prozess_basis["bottom_shell_layers"] = str(bodenschichten)
     if stuetzen and stuetz_art == "baum":
         prozess_basis["support_type"] = "tree(auto)"
     elif stuetzen and stuetz_art == "normal":

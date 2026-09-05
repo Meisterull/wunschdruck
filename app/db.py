@@ -45,7 +45,9 @@ def _conn() -> sqlite3.Connection:
                        "anzahl INTEGER NOT NULL DEFAULT 1",
                        "fortschritt REAL", "verbrauch TEXT",
                        "fuellung INTEGER",
-                       "stuetz_art TEXT NOT NULL DEFAULT 'profil'"):
+                       "stuetz_art TEXT NOT NULL DEFAULT 'profil'",
+                       "waende INTEGER", "deckschichten INTEGER",
+                       "bodenschichten INTEGER"):
             try:
                 c.execute(f"ALTER TABLE jobs ADD COLUMN {spalte}")
             except sqlite3.OperationalError:
@@ -56,15 +58,18 @@ def _conn() -> sqlite3.Connection:
 
 def job_anlegen(name: str, slot: int, qualitaet: str, stuetzen: bool, platte: int,
                 stuetz_slot: int = 0, ausrichtung: str = "auto", anzahl: int = 1,
-                fuellung: int | None = None, stuetz_art: str = "profil") -> str:
+                fuellung: int | None = None, stuetz_art: str = "profil",
+                waende: int | None = None, deckschichten: int | None = None,
+                bodenschichten: int | None = None) -> str:
     job_id = uuid.uuid4().hex[:8]
     with _conn() as c:
         c.execute(
             "INSERT INTO jobs (id,name,status,slot,qualitaet,stuetzen,platte,erstellt,"
-            "stuetz_slot,ausrichtung,anzahl,fuellung,stuetz_art)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "stuetz_slot,ausrichtung,anzahl,fuellung,stuetz_art,waende,deckschichten,"
+            "bodenschichten) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (job_id, name, "neu", slot, qualitaet, int(stuetzen), platte, time.time(),
-             stuetz_slot, ausrichtung, anzahl, fuellung, stuetz_art),
+             stuetz_slot, ausrichtung, anzahl, fuellung, stuetz_art,
+             waende, deckschichten, bodenschichten),
         )
     return job_id
 

@@ -80,7 +80,8 @@ async def hochladen(request: Request, datei: UploadFile = File(...),
                     stuetzen: str = Form("auto"), platte: int = Form(1),
                     stuetz_slot: int = Form(0), ausrichtung: str = Form("auto"),
                     anzahl: int = Form(1), fuellung: str = Form(""),
-                    stuetz_art: str = Form("profil")):
+                    stuetz_art: str = Form("profil"), waende: str = Form(""),
+                    deckschichten: str = Form(""), bodenschichten: str = Form("")):
     endung = Path(datei.filename or "").suffix.lower()
     qualitaet_ok = (qualitaet in ("fein", "standard", "schnell")
                     or (qualitaet.startswith("eigen:")
@@ -94,7 +95,10 @@ async def hochladen(request: Request, datei: UploadFile = File(...),
                             ausrichtung="datei" if ausrichtung == "datei" else "auto",
                             anzahl=min(max(anzahl, 1), 25),
                             fuellung=_fuellung_wert(fuellung),
-                            stuetz_art=stuetz_art if stuetz_art in ("profil", "baum", "normal") else "profil")
+                            stuetz_art=stuetz_art if stuetz_art in ("profil", "baum", "normal") else "profil",
+                            waende=_opt_int(waende, 1, 10),
+                            deckschichten=_opt_int(deckschichten, 0, 15),
+                            bodenschichten=_opt_int(bodenschichten, 0, 15))
     ordner = worker.job_dir(job_id)
     ordner.mkdir(parents=True, exist_ok=True)
     with (ordner / f"quelle{endung}").open("wb") as ziel:
@@ -142,6 +146,9 @@ async def neu_slicen(request: Request, job_id: str):
         fuellung=_fuellung_wert(str(f.get("fuellung", ""))),
         stuetz_art=(str(f.get("stuetz_art", "profil"))
                     if str(f.get("stuetz_art")) in ("profil", "baum", "normal") else "profil"),
+        waende=_opt_int(str(f.get("waende", "")), 1, 10),
+        deckschichten=_opt_int(str(f.get("deckschichten", "")), 0, 15),
+        bodenschichten=_opt_int(str(f.get("bodenschichten", "")), 0, 15),
         dauer_s=None, filament_g=None, verbrauch=None, fortschritt=None,
         fehler_text=None, gestartet=None,
     )
@@ -248,15 +255,19 @@ def profil_loeschen(name: str):
     return RedirectResponse("/einstellungen", status_code=303)
 
 
-def _fuellung_wert(roh: str) -> int | None:
-    """Füllungs-Feld: leer = Profil-Standard, sonst 0–100 %."""
+def _opt_int(roh: str, lo: int, hi: int) -> int | None:
+    """Optionales Zahlenfeld: leer = Profil-Standard."""
     roh = str(roh).strip().rstrip("%")
     if not roh:
         return None
     try:
-        return min(max(int(roh), 0), 100)
+        return min(max(int(roh), lo), hi)
     except ValueError:
         return None
+
+
+def _fuellung_wert(roh: str) -> int | None:
+    return _opt_int(roh, 0, 100)
 
 
 def _hex_sicher(wert: str) -> str:
