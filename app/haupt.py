@@ -46,6 +46,28 @@ def drucker_status() -> str:
     return "druckt" if zustand in ("printing", "paused") else "frei"
 
 
+def _farbnah(a: str, b: str) -> bool:
+    """Zwei Hex-Farben grob vergleichbar? (Touchscreen- vs. Lager-Farbton)"""
+    try:
+        ra, ga, ba = (int(a.lstrip("#")[i:i+2], 16) for i in (0, 2, 4))
+        rb, gb, bb = (int(b.lstrip("#")[i:i+2], 16) for i in (0, 2, 4))
+        return abs(ra - rb) + abs(ga - gb) + abs(ba - bb) <= 180
+    except (ValueError, IndexError):
+        return True  # ohne saubere Farben nur Material vergleichen
+
+
+def _job_slots(zeile) -> set[int]:
+    """Welche physischen Slots ein Job benutzt."""
+    slots = set()
+    if zeile["zuordnung"]:
+        slots.update(json.loads(zeile["zuordnung"]).values())
+    else:
+        slots.add(zeile["slot"])
+    if zeile["stuetzen"] and (zeile["stuetz_slot"] or 0) > 0:
+        slots.add(zeile["stuetz_slot"])
+    return {min(max(int(s), 1), 4) for s in slots}
+
+
 @app.get("/")
 def index(request: Request):
     sp = sprache(request)
@@ -61,10 +83,32 @@ def index(request: Request):
                 verbrauch_jobs[z["id"]] = werte
         if z["farben"] and len(json.loads(z["farben"]).get("farben", [])) >= 2:
             mehrfarb_jobs.add(z["id"])
+
+    # Filament-Abgleich: Was ist im Drucker geladen vs. was braucht der Job?
+    drucker = drucker_status()
+    drucker_filamente = moonraker.filamente() if drucker in ("frei", "druckt") else None
+    slots_cfg = db.slots()
+    abgleich = {}
+    if drucker_filamente:
+        for z in jobs:
+            if z["status"] != "bereit":
+                continue
+            zeilen, alles_ok = [], True
+            for s in sorted(_job_slots(z)):
+                konf, ist = slots_cfg[s - 1], drucker_filamente[s - 1]
+                passt = (ist["geladen"] and konf["material"] != "leer"
+                         and konf["material"].lower() in ist["typ"].lower()
+                         and _farbnah(konf.get("hex", ""), ist["farbe"]))
+                alles_ok = alles_ok and passt
+                zeilen.append({"slot": s, "konf": konf, "ist": ist, "passt": passt})
+            abgleich[z["id"]] = {"zeilen": zeilen, "ok": alles_ok}
     return vorlagen.TemplateResponse(request, "index.html", {
         "t": i18n.t(sp), "sprache": sp,
-        "jobs": jobs, "slots": db.slots(),
-        "drucker": drucker_status(),
+        "jobs": jobs, "slots": slots_cfg,
+        "drucker": drucker,
+        "abgleich": abgleich,
+        "gesendet": request.query_params.get("gesendet"),
+        "sendefehler": request.query_params.get("sendefehler"),
         "aktive_status": AKTIVE_STATUS,
         "farben_jobs": farben_jobs,
         "verbrauch_jobs": verbrauch_jobs,
@@ -159,6 +203,24 @@ async def neu_slicen(request: Request, job_id: str):
     shutil.rmtree(worker.job_dir(job_id) / "ausgabe", ignore_errors=True)
     worker.slice_schlange.put(job_id)
     return RedirectResponse("/", status_code=303)
+
+
+@app.post("/jobs/{job_id}/senden")
+def nur_senden(job_id: str):
+    """G-Code nur auf den Drucker legen — Start dann manuell am Gerät
+    (z. B. wenn erst noch Filament umgeladen werden soll)."""
+    zeile = db.job(job_id)
+    if not zeile or zeile["status"] != "bereit":
+        return RedirectResponse("/", status_code=303)
+    gcode = _job_gcode(job_id)
+    if not gcode or not moonraker.erreichbar():
+        return RedirectResponse("/?sendefehler=1", status_code=303)
+    try:
+        moonraker.hochladen(gcode, f"wunschdruck_{zeile['id']}_{zeile['name']}.gcode")
+    except Exception:
+        logging.getLogger("wunschdruck").exception("Nur-Senden fehlgeschlagen")
+        return RedirectResponse("/?sendefehler=1", status_code=303)
+    return RedirectResponse("/?gesendet=1", status_code=303)
 
 
 @app.post("/jobs/{job_id}/verwerfen")

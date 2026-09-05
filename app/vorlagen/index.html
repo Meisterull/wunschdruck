@@ -8,6 +8,9 @@
     {%- else %} ⚠️ {{ t.fehler_kein_moonraker }}{% endif %}</span>
 </p>
 
+{% if gesendet %}<p class="ok">✅ {{ t.gesendet_meldung }}</p>{% endif %}
+{% if sendefehler %}<p class="fehler">⚠️ {{ t.sendefehler_meldung }}</p>{% endif %}
+
 <section class="karte">
   <h2>{{ t.hochladen }}</h2>
   <form action="/hochladen" method="post" enctype="multipart/form-data">
@@ -143,12 +146,24 @@
       <button type="submit" class="gruen">🎨 {{ t.farbwahl_los }}</button>
     </form>
     {% endif %}
+    {% if abgleich.get(j.id) %}
+    <div class="jobdaten">
+      🎛️ {% for r in abgleich[j.id].zeilen -%}
+        Slot {{ r.slot }}:
+        {%- if r.ist.geladen %} <span class="farbchip" style="background: {{ r.ist.farbe or '#9e9e9e' }}"></span> {{ r.ist.typ or '?' }}
+        {%- else %} {{ t.slot_leer_drucker }}{% endif %}
+        {%- if r.passt %} ✅{% else %} ⚠️ ({{ t.erwartet }}: {{ r.konf.material }}{% if r.konf.farbe %}, {{ r.konf.farbe }}{% endif %}){% endif %} &nbsp;
+      {%- endfor %}
+      <br>{{ t.abgleich_ok if abgleich[j.id].ok else t.abgleich_warn }}
+    </div>
+    {% endif %}
     <div class="aktionen">
       {% if j.status in ('bereit', 'freigegeben', 'sendet', 'druckt', 'fertig') %}
       <a class="knopf" href="/jobs/{{ j.id }}/ansicht">🧊 {{ t.ansicht3d }}</a>
       {% endif %}
       {% if j.status == 'bereit' %}
       <form action="/jobs/{{ j.id }}/drucken" method="post"><button class="gruen">▶️ {{ t.drucken }}</button></form>
+      <form action="/jobs/{{ j.id }}/senden" method="post"><button>⬆️ {{ t.nur_senden }}</button></form>
       {% endif %}
       {% if j.status in ('bereit', 'freigegeben', 'fehler') %}
       <form action="/jobs/{{ j.id }}/verwerfen" method="post"><button>✖️ {{ t.verwerfen }}</button></form>

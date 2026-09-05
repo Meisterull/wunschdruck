@@ -36,6 +36,32 @@ def frei() -> bool:
     return zustand() in ("standby", "complete", "cancelled")
 
 
+def filamente(timeout: float = 4.0) -> list[dict] | None:
+    """Was aktuell in den 4 Slots geladen ist (U1: print_task_config) —
+    Typ/Farbe/Hersteller pflegt man am Drucker-Touchscreen. None = offline."""
+    try:
+        r = httpx.get(f"{konfig.MOONRAKER_URL}/printer/objects/query",
+                      params={"print_task_config": ""}, timeout=timeout)
+        r.raise_for_status()
+        cfg = r.json()["result"]["status"]["print_task_config"]
+    except (httpx.HTTPError, KeyError):
+        return None
+
+    def feld(name, i, standard=""):
+        werte = cfg.get(name) or []
+        return werte[i] if i < len(werte) else standard
+
+    def farbe(i):
+        roh = str(feld("filament_color_rgba", i)).lstrip("#")
+        return f"#{roh[:6]}" if len(roh) >= 6 else ""
+
+    return [{"geladen": bool(feld("filament_exist", i, False)),
+             "typ": str(feld("filament_type", i)),
+             "farbe": farbe(i),
+             "hersteller": str(feld("filament_vendor", i))}
+            for i in range(4)]
+
+
 def fortschritt(timeout: float = 5.0) -> float | None:
     """Druckfortschritt 0..1 (None wenn nicht ermittelbar)."""
     try:
