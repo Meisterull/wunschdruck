@@ -21,6 +21,10 @@ def _klasse(typ: str) -> str:
         return "stuetze"
     if any(r in t for r in _RAND_TYPEN):
         return "rand"
+    # Innenleben (Sparse/Internal/Bridge) separat — die Ansicht blendet es
+    # standardmäßig aus, sonst wirkt das Gitter wie ein "Spinnennetz" im Modell.
+    if "infill" in t or "bridge" in t:
+        return "fuellung"
     return "teil"
 
 
@@ -140,8 +144,9 @@ def gcode_vorschau(gcode: Path) -> dict:
 
 
 def vorschau_laden(gcode: Path) -> dict:
-    """Vorschau aus dem Cache neben dem G-Code, bei Bedarf frisch gerechnet."""
-    cache = gcode.with_suffix(".vorschau.json")
+    """Vorschau aus dem Cache neben dem G-Code, bei Bedarf frisch gerechnet.
+    (Suffix v2: Klassen-Schema mit 'fuellung' — alte Caches nicht wiederverwenden.)"""
+    cache = gcode.with_suffix(".vorschau2.json")
     if cache.exists() and cache.stat().st_mtime >= gcode.stat().st_mtime:
         return json.loads(cache.read_text())
     daten = gcode_vorschau(gcode)

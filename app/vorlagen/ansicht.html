@@ -10,6 +10,7 @@
     <label style="flex:1">{{ t.ebenen }}: <span id="ebene_anzeige">–</span>
       <input type="range" id="ebenen_regler" min="1" max="1" value="1" style="width:100%">
     </label>
+    <label class="zeile"><input type="checkbox" id="fuellung_schalter"> {{ t.fuellung_zeigen }}</label>
   </div>
   <p class="hinweis" id="legende"></p>
   <p class="hinweis">{{ t.ansicht_tipp }}</p>
@@ -95,14 +96,19 @@ fetch(location.pathname.replace('/ansicht', '/vorschau'))
       });
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(punkte, 3));
-      const stuetze = gr.k === 'stuetze', rand = gr.k === 'rand';
+      const stuetze = gr.k === 'stuetze', rand = gr.k === 'rand', fuellung = gr.k === 'fuellung';
       const mat = new THREE.LineBasicMaterial({
         color: stuetze ? '#8a8378' : (rand ? '#55504a' : WERKZEUG_FARBEN[gr.t % 4]),
-        transparent: stuetze || rand, opacity: stuetze ? 0.55 : (rand ? 0.35 : 1),
+        transparent: stuetze || rand || fuellung,
+        opacity: stuetze ? 0.55 : (rand ? 0.35 : (fuellung ? 0.4 : 1)),
       });
       const linien = new THREE.LineSegments(geo, mat);
+      linien.visible = !fuellung;  // Innenleben standardmäßig aus (Schalter unten)
       szene.add(linien);
-      gruppen.push({linien, offsets});
+      gruppen.push({linien, offsets, fuellung});
+    });
+    document.getElementById('fuellung_schalter').addEventListener('change', (e) => {
+      gruppen.forEach(gr => { if (gr.fuellung) gr.linien.visible = e.target.checked; });
     });
 
     regler.max = daten.ebenen.length;
