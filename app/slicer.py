@@ -96,6 +96,18 @@ def eigenes_profil_importieren(roh: bytes) -> str:
     return name
 
 
+def _slot_filament(material: str, slot_nr: int) -> Path:
+    """Filamentprofil des Slots mit eindeutigem Namen (siehe Dedupe-Falle oben)."""
+    konfig.PROFIL_CACHE.mkdir(parents=True, exist_ok=True)
+    ziel = konfig.PROFIL_CACHE / f"slot{slot_nr}-{material}.json"
+    if not ziel.exists():
+        basis = json.loads(_profil_pfad(
+            MATERIAL_PROFIL.get(material, MATERIAL_PROFIL["PLA"])).read_text())
+        basis["name"] = f"{basis.get('name', material)} Slot{slot_nr}"
+        ziel.write_text(json.dumps(basis, ensure_ascii=False))
+    return ziel
+
+
 def _dauer_sekunden(text: str) -> int:
     """'1h 15m 30s' → Sekunden."""
     gesamt = 0
@@ -178,9 +190,11 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
     # Slot N drucken heisst: N Filament-Eintraege laden und dem Objekt die
     # Filament-ID N geben — die CLI zaehlt dabei ab 1.
     if slot_materialien:
+        # Je Slot eine EINDEUTIG benannte Profilkopie: bei 4x identischem Namen
+        # dedupliziert Orca, haelt den Drucker fuer einfarbig und schaltet den
+        # (fuer den U1 empfohlenen) Prime-Tower still ab (Befund 05.09.).
         filamente = ";".join(
-            str(_profil_pfad(MATERIAL_PROFIL.get(m, MATERIAL_PROFIL["PLA"])))
-            for m in slot_materialien)
+            str(_slot_filament(m, i + 1)) for i, m in enumerate(slot_materialien))
     else:
         filamente = ";".join([str(filament)] * slot)
     # "wie in Datei": Rotation unangetastet lassen (--orient 0), die Platzierung
