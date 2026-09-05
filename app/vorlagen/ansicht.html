@@ -38,25 +38,18 @@
 <script src="/statisch/OrbitControls.js"></script>
 <script>
 // Werkzeugfarben = echte Slot-Farben aus dem Lager, Festpalette als Rückfall.
-// Sehr dunkle Farben (schwarzes Filament!) werden fürs Rendern aufgehellt,
-// sonst verschwinden sie vor der dunklen Bühne — der Druck bleibt natürlich schwarz.
+// (Heller Hintergrund: auch schwarzes Filament ist so direkt sichtbar.)
 const RUECKFALL = ['#e08a4c', '#5b8dd9', '#5cb877', '#c95fa0'];
-function sichtbar(hex) {
-  const c = new THREE.Color(hex), hsl = {};
-  c.getHSL(hsl);
-  if (hsl.l < 0.22) c.setHSL(hsl.h, hsl.s, 0.22);
-  return '#' + c.getHexString();
-}
 const WERKZEUG_FARBEN = [
   {%- for s in slots %}'{{ s.get("hex") or "" }}',{% endfor -%}
-].map((h, i) => sichtbar(h || RUECKFALL[i % 4]));
+].map((h, i) => h || RUECKFALL[i % 4]);
 
 const buehne = document.getElementById('buehne');
 const regler = document.getElementById('ebenen_regler');
 const anzeige = document.getElementById('ebene_anzeige');
 
 const szene = new THREE.Scene();
-szene.background = new THREE.Color(0x1c1a17);
+szene.background = new THREE.Color(0xb9b4ac);  // helle, warme Bühne
 const kamera = new THREE.PerspectiveCamera(45, 1, 1, 4000);
 // WICHTIG: Z ist bei uns oben — und OrbitControls liest die Up-Richtung nur
 // EINMAL beim Erzeugen. Wird sie erst später gesetzt, rotiert die Steuerung
@@ -66,10 +59,10 @@ const renderer = new THREE.WebGLRenderer({antialias: true});
 buehne.appendChild(renderer.domElement);
 const steuerung = new THREE.OrbitControls(kamera, renderer.domElement);
 steuerung.enableDamping = true;
-// Nicht über den Zenit oder unter die Platte kippen — sonst "dreht er über
-// die andere Achse" (Umschlagen der Orbit-Sphäre).
+// Nicht über die Pole kippen (Umschlagen), aber die Platte darf komplett
+// von unten betrachtet werden.
 steuerung.minPolarAngle = 0.05;
-steuerung.maxPolarAngle = Math.PI * 0.52;
+steuerung.maxPolarAngle = Math.PI - 0.05;
 steuerung.rotateSpeed = 0.85;
 
 function groesse() {
@@ -99,7 +92,7 @@ fetch(location.pathname.replace('/ansicht', '/vorschau'))
   .then(daten => {
     const [bx, by] = daten.bett;
     const raster = new THREE.GridHelper(Math.max(bx, by), Math.max(bx, by) / 10,
-                                        0x55504a, 0x33302c);
+                                        0x8f8a82, 0xa8a39a);
     raster.rotation.x = Math.PI / 2;
     raster.position.set(bx / 2, by / 2, 0);
     szene.add(raster);
@@ -107,8 +100,22 @@ fetch(location.pathname.replace('/ansicht', '/vorschau'))
       new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(0, 0, 0), new THREE.Vector3(bx, 0, 0),
         new THREE.Vector3(bx, by, 0), new THREE.Vector3(0, by, 0)]),
-      new THREE.LineBasicMaterial({color: 0x8a8378}));
+      new THREE.LineBasicMaterial({color: 0x6e675e}));
     szene.add(umriss);
+
+    // "VORNE"-Marker an der vorderen Plattenkante (U1: Y=0 = Tür-Seite).
+    const schild = document.createElement('canvas');
+    schild.width = 256; schild.height = 80;
+    const sz = schild.getContext('2d');
+    sz.fillStyle = '#6e675e';
+    sz.font = 'bold 52px system-ui, sans-serif';
+    sz.textAlign = 'center'; sz.textBaseline = 'middle';
+    sz.fillText('▼ VORNE', 128, 40);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: new THREE.CanvasTexture(schild), transparent: true }));
+    sprite.scale.set(64, 20, 1);
+    sprite.position.set(bx / 2, -18, 2);
+    szene.add(sprite);
 
     // Je (Werkzeug, Klasse) EIN LineSegments-Objekt; die Ebenen liegen darin
     // aufsteigend, so schneidet der Regler per drawRange von unten nach oben.
@@ -119,31 +126,74 @@ fetch(location.pathname.replace('/ansicht', '/vorschau'))
         if (!sammel.has(key)) sammel.set(key, {t: sp.t, k: sp.k});
       });
     });
+    // Ebenen-Höhen für die Seitenwände der Bänder (aus den Z-Sprüngen).
+    const hoehen = daten.ebenen.map((eb, i) =>
+      Math.min(0.45, Math.max(0.08, eb.z - (i ? daten.ebenen[i - 1].z : 0))));
+    // Teil-Bahnen als UNDURCHSICHTIGE Bänder (Deckband + Seitenwand je Segment)
+    // — bei Riesenmodellen Rückfall auf Linien, sonst wird's dem Handy zu viel.
+    let teilSegmente = 0;
+    daten.ebenen.forEach(eb => eb.spuren.forEach(sp => {
+      if (sp.k === 'teil') sp.l.forEach(p => teilSegmente += p.length / 2 - 1);
+    }));
+    const bandModus = teilSegmente < 320000;
+    const HALBBREITE = 0.22;
+
     sammel.forEach(gr => {
-      const punkte = [];
       const offsets = [];
-      daten.ebenen.forEach(eb => {
-        eb.spuren.filter(sp => sp.t === gr.t && sp.k === gr.k).forEach(sp => {
-          sp.l.forEach(p => {  // jede Bahn einzeln — keine Phantom-Nähte
-            for (let i = 0; i + 3 < p.length; i += 2) {
-              punkte.push(p[i], p[i + 1], eb.z, p[i + 2], p[i + 3], eb.z);
-            }
+      let objekt;
+      if (gr.k === 'teil' && bandModus) {
+        const pos = [], col = [];
+        const cTop = new THREE.Color(WERKZEUG_FARBEN[gr.t % 4]);
+        const cSeite = cTop.clone().multiplyScalar(0.7);
+        daten.ebenen.forEach((eb, ei) => {
+          const h = hoehen[ei];
+          eb.spuren.filter(sp => sp.t === gr.t && sp.k === gr.k).forEach(sp => {
+            sp.l.forEach(p => {
+              for (let i = 0; i + 3 < p.length; i += 2) {
+                const x1 = p[i], y1 = p[i + 1], x2 = p[i + 2], y2 = p[i + 3];
+                const L = Math.hypot(x2 - x1, y2 - y1) || 1;
+                const nx = -(y2 - y1) / L * HALBBREITE, ny = (x2 - x1) / L * HALBBREITE;
+                const z = eb.z, zu = z - h;
+                pos.push(x1 + nx, y1 + ny, z,  x1 - nx, y1 - ny, z,  x2 - nx, y2 - ny, z,
+                         x1 + nx, y1 + ny, z,  x2 - nx, y2 - ny, z,  x2 + nx, y2 + ny, z);
+                for (let k = 0; k < 6; k++) col.push(cTop.r, cTop.g, cTop.b);
+                pos.push(x1, y1, zu,  x2, y2, zu,  x2, y2, z,
+                         x1, y1, zu,  x2, y2, z,   x1, y1, z);
+                for (let k = 0; k < 6; k++) col.push(cSeite.r, cSeite.g, cSeite.b);
+              }
+            });
           });
+          offsets.push(pos.length / 3);
         });
-        offsets.push(punkte.length / 3);
-      });
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.Float32BufferAttribute(punkte, 3));
-      const stuetze = gr.k === 'stuetze', rand = gr.k === 'rand', fuellung = gr.k === 'fuellung';
-      const mat = new THREE.LineBasicMaterial({
-        color: stuetze ? '#8a8378' : (rand ? '#55504a' : WERKZEUG_FARBEN[gr.t % 4]),
-        transparent: stuetze || rand || fuellung,
-        opacity: stuetze ? 0.55 : (rand ? 0.35 : (fuellung ? 0.4 : 1)),
-      });
-      const linien = new THREE.LineSegments(geo, mat);
-      linien.visible = !fuellung;  // Innenleben standardmäßig aus (Schalter unten)
-      szene.add(linien);
-      gruppen.push({linien, offsets, fuellung});
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+        objekt = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+          vertexColors: true, side: THREE.DoubleSide }));
+      } else {
+        const punkte = [];
+        daten.ebenen.forEach(eb => {
+          eb.spuren.filter(sp => sp.t === gr.t && sp.k === gr.k).forEach(sp => {
+            sp.l.forEach(p => {  // jede Bahn einzeln — keine Phantom-Nähte
+              for (let i = 0; i + 3 < p.length; i += 2) {
+                punkte.push(p[i], p[i + 1], eb.z, p[i + 2], p[i + 3], eb.z);
+              }
+            });
+          });
+          offsets.push(punkte.length / 3);
+        });
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(punkte, 3));
+        const stuetze = gr.k === 'stuetze', rand = gr.k === 'rand', fuellung = gr.k === 'fuellung';
+        objekt = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+          color: stuetze ? '#7a746b' : (rand ? '#8a8378' : WERKZEUG_FARBEN[gr.t % 4]),
+          transparent: stuetze || rand || fuellung,
+          opacity: stuetze ? 0.6 : (rand ? 0.35 : (fuellung ? 0.4 : 1)),
+        }));
+      }
+      objekt.visible = gr.k !== 'fuellung';  // Innenleben standardmäßig aus
+      szene.add(objekt);
+      gruppen.push({linien: objekt, offsets, fuellung: gr.k === 'fuellung'});
     });
     document.getElementById('fuellung_schalter').addEventListener('change', (e) => {
       gruppen.forEach(gr => { if (gr.fuellung) gr.linien.visible = e.target.checked; });
