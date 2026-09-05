@@ -60,6 +60,16 @@
           <option value="datei">{{ t.ausrichtung_datei }}</option>
         </select>
       </label>
+      <label>{{ t.fuellung }}
+        <input type="number" name="fuellung" min="0" max="100" step="5" placeholder="{{ t.profil_standard }}">
+      </label>
+      <label>{{ t.stuetz_art }}
+        <select name="stuetz_art">
+          <option value="profil">{{ t.profil_standard }}</option>
+          <option value="baum">{{ t.stuetz_baum }}</option>
+          <option value="normal">{{ t.stuetz_normal }}</option>
+        </select>
+      </label>
       <label>{{ t.anzahl }}
         <input type="number" name="anzahl" value="1" min="1" max="25">
       </label>
@@ -190,6 +200,17 @@
           </label>
           <label>{{ t.anzahl }}
             <input type="number" name="anzahl" value="{{ j.anzahl or 1 }}" min="1" max="25">
+          </label>
+          <label>{{ t.fuellung }}
+            <input type="number" name="fuellung" min="0" max="100" step="5"
+                   value="{{ j.fuellung if j.fuellung is not none else '' }}" placeholder="{{ t.profil_standard }}">
+          </label>
+          <label>{{ t.stuetz_art }}
+            <select name="stuetz_art">
+              <option value="profil" {% if j.stuetz_art == 'profil' %}selected{% endif %}>{{ t.profil_standard }}</option>
+              <option value="baum" {% if j.stuetz_art == 'baum' %}selected{% endif %}>{{ t.stuetz_baum }}</option>
+              <option value="normal" {% if j.stuetz_art == 'normal' %}selected{% endif %}>{{ t.stuetz_normal }}</option>
+            </select>
           </label>
         </div>
         {% if j.id in mehrfarb_jobs %}

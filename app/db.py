@@ -43,7 +43,9 @@ def _conn() -> sqlite3.Connection:
                        "stuetz_slot INTEGER NOT NULL DEFAULT 0",
                        "ausrichtung TEXT NOT NULL DEFAULT 'auto'",
                        "anzahl INTEGER NOT NULL DEFAULT 1",
-                       "fortschritt REAL", "verbrauch TEXT"):
+                       "fortschritt REAL", "verbrauch TEXT",
+                       "fuellung INTEGER",
+                       "stuetz_art TEXT NOT NULL DEFAULT 'profil'"):
             try:
                 c.execute(f"ALTER TABLE jobs ADD COLUMN {spalte}")
             except sqlite3.OperationalError:
@@ -53,14 +55,16 @@ def _conn() -> sqlite3.Connection:
 
 
 def job_anlegen(name: str, slot: int, qualitaet: str, stuetzen: bool, platte: int,
-                stuetz_slot: int = 0, ausrichtung: str = "auto", anzahl: int = 1) -> str:
+                stuetz_slot: int = 0, ausrichtung: str = "auto", anzahl: int = 1,
+                fuellung: int | None = None, stuetz_art: str = "profil") -> str:
     job_id = uuid.uuid4().hex[:8]
     with _conn() as c:
         c.execute(
             "INSERT INTO jobs (id,name,status,slot,qualitaet,stuetzen,platte,erstellt,"
-            "stuetz_slot,ausrichtung,anzahl) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "stuetz_slot,ausrichtung,anzahl,fuellung,stuetz_art)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (job_id, name, "neu", slot, qualitaet, int(stuetzen), platte, time.time(),
-             stuetz_slot, ausrichtung, anzahl),
+             stuetz_slot, ausrichtung, anzahl, fuellung, stuetz_art),
         )
     return job_id
 

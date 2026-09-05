@@ -68,6 +68,8 @@ def _slicer_lauf():
             stuetz_slot = (zeile["stuetz_slot"] or 0) if zeile["stuetzen"] else 0
             ausrichtung = zeile["ausrichtung"] or "auto"
             anzahl = zeile["anzahl"] or 1
+            extra = {"fuellung": zeile["fuellung"],
+                     "stuetz_art": zeile["stuetz_art"] or "profil"}
 
             if len(analyse["farben"]) >= 2 and zuordnung:
                 # Mehrfarb-Projekt: Paint-Codes/Extruder auf die Ziel-Slots
@@ -82,7 +84,7 @@ def _slicer_lauf():
                     bool(zeile["stuetzen"]), 1, zeile["platte"],
                     slot_materialien=[s["material"] for s in slots],
                     stuetz_slot=stuetz_slot, ausrichtung=ausrichtung,
-                    anzahl=anzahl, mehrfarb_projekt=True)
+                    anzahl=anzahl, mehrfarb_projekt=True, **extra)
             else:
                 # Einfarbige 3MFs entgiften (CLI-giftige eingebettete Settings).
                 if quelle.suffix.lower() == ".3mf":
@@ -94,7 +96,7 @@ def _slicer_lauf():
                     quelle, ordner / "ausgabe", material, zeile["qualitaet"],
                     bool(zeile["stuetzen"]), zeile["slot"], zeile["platte"],
                     slot_materialien=slot_materialien, stuetz_slot=stuetz_slot,
-                    ausrichtung=ausrichtung, anzahl=anzahl)
+                    ausrichtung=ausrichtung, anzahl=anzahl, **extra)
             db.job_update(job_id, status="bereit",
                           dauer_s=ergebnis["dauer_s"], filament_g=ergebnis["filament_g"],
                           verbrauch=json.dumps(ergebnis.get("verbrauch")))

@@ -132,7 +132,8 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
            slot_materialien: list[str] | None = None,
            gruppen: list[tuple[Path, int]] | None = None,
            stuetz_slot: int = 0, ausrichtung: str = "auto",
-           anzahl: int = 1, mehrfarb_projekt: bool = False) -> dict:
+           anzahl: int = 1, mehrfarb_projekt: bool = False,
+           fuellung: int | None = None, stuetz_art: str = "profil") -> dict:
     """Modell slicen; liefert {'gcode': Path, 'dauer_s': int, 'filament_g': float}.
 
     slot_materialien (Mehrfarb-Pfad): Materialien der 4 physischen Slots in
@@ -161,8 +162,12 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
     # Sehnen quer durchs Modell — "Spinnennetz").
     prozess_basis["enable_arc_fitting"] = "0"
     prozess_basis["enable_support"] = "1" if stuetzen else "0"
-    if stuetzen:
-        prozess_basis.setdefault("support_type", "tree(auto)")
+    if fuellung is not None:
+        prozess_basis["sparse_infill_density"] = f"{fuellung}%"
+    if stuetzen and stuetz_art == "baum":
+        prozess_basis["support_type"] = "tree(auto)"
+    elif stuetzen and stuetz_art == "normal":
+        prozess_basis["support_type"] = "normal(auto)"
     if stuetzen and stuetz_slot:
         # Stuetzen (Basis + Kontaktflaeche) aus einem eigenen Slot drucken.
         prozess_basis["support_filament"] = str(stuetz_slot)

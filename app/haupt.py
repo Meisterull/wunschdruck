@@ -79,7 +79,8 @@ async def hochladen(request: Request, datei: UploadFile = File(...),
                     slot: int = Form(1), qualitaet: str = Form("standard"),
                     stuetzen: str = Form("auto"), platte: int = Form(1),
                     stuetz_slot: int = Form(0), ausrichtung: str = Form("auto"),
-                    anzahl: int = Form(1)):
+                    anzahl: int = Form(1), fuellung: str = Form(""),
+                    stuetz_art: str = Form("profil")):
     endung = Path(datei.filename or "").suffix.lower()
     qualitaet_ok = (qualitaet in ("fein", "standard", "schnell")
                     or (qualitaet.startswith("eigen:")
@@ -91,7 +92,9 @@ async def hochladen(request: Request, datei: UploadFile = File(...),
                             stuetzen == "auto", max(platte, 1),
                             stuetz_slot=min(max(stuetz_slot, 0), 4),
                             ausrichtung="datei" if ausrichtung == "datei" else "auto",
-                            anzahl=min(max(anzahl, 1), 25))
+                            anzahl=min(max(anzahl, 1), 25),
+                            fuellung=_fuellung_wert(fuellung),
+                            stuetz_art=stuetz_art if stuetz_art in ("profil", "baum", "normal") else "profil")
     ordner = worker.job_dir(job_id)
     ordner.mkdir(parents=True, exist_ok=True)
     with (ordner / f"quelle{endung}").open("wb") as ziel:
@@ -136,6 +139,9 @@ async def neu_slicen(request: Request, job_id: str):
         ausrichtung="datei" if str(f.get("ausrichtung", zeile["ausrichtung"])) == "datei" else "auto",
         anzahl=ganzzahl("anzahl", zeile["anzahl"] or 1, 1, 25),
         platte=ganzzahl("platte", zeile["platte"], 1, 16),
+        fuellung=_fuellung_wert(str(f.get("fuellung", ""))),
+        stuetz_art=(str(f.get("stuetz_art", "profil"))
+                    if str(f.get("stuetz_art")) in ("profil", "baum", "normal") else "profil"),
         dauer_s=None, filament_g=None, verbrauch=None, fortschritt=None,
         fehler_text=None, gestartet=None,
     )
@@ -240,6 +246,17 @@ def profil_loeschen(name: str):
     if pfad.exists():
         pfad.unlink()
     return RedirectResponse("/einstellungen", status_code=303)
+
+
+def _fuellung_wert(roh: str) -> int | None:
+    """Füllungs-Feld: leer = Profil-Standard, sonst 0–100 %."""
+    roh = str(roh).strip().rstrip("%")
+    if not roh:
+        return None
+    try:
+        return min(max(int(roh), 0), 100)
+    except ValueError:
+        return None
 
 
 def _hex_sicher(wert: str) -> str:
