@@ -28,13 +28,17 @@ _EXTRUDER_RE = re.compile(r'key="extruder"\s+value="(\d+)"')
 
 
 def _uniform_index(code: str) -> int | None:
-    """Kurzer Einheits-Code → Filament-Index (1-basiert), sonst None."""
+    """Kurzer Einheits-Code → Filament-Index (1-basiert), sonst None.
+
+    Encoding = Filament-Index * 4 ("4"=1, "8"=2, "C"=3, "10"=4) — am echten
+    MakerWorld-Caliper verifiziert (Code "8" druckte nachweislich Filament 2;
+    die frühere +1-Formel hat die Farben um eins verschoben)."""
     if len(code) > 2:
         return None
     wert = int(code, 16)
     if wert % 4 != 0 or wert == 0:
         return None
-    return wert // 4 + 1
+    return wert // 4
 
 
 def analysiere(pfad: Path) -> dict:
@@ -113,9 +117,7 @@ def ummappen(quelle: Path, ziel: Path, zuordnung: dict[int, int]) -> Path:
         slot = zuordnung.get(idx) if idx else None
         if not slot:
             return m.group(0)
-        if slot == 1:
-            return ""  # Filament 1 = Attribut weglassen
-        return f'paint_color="{(slot - 1) * 4:X}"'
+        return f'paint_color="{slot * 4:X}"'
 
     def extruder_ersetzen(m: re.Match) -> str:
         slot = zuordnung.get(int(m.group(1)))
@@ -138,8 +140,13 @@ def ummappen(quelle: Path, ziel: Path, zuordnung: dict[int, int]) -> Path:
                     projekt = json.loads(daten)
                     for schluessel in CLI_GIFTIG:
                         projekt.pop(schluessel, None)
+                    # Werte, an denen die CLI-Validierung scheitert (Bambu
+                    # erlaubt -1 = auto, Orca-CLI verlangt >= 0).
+                    exp = projekt.get("raft_first_layer_expansion")
+                    if exp is not None and float(str(exp).replace("%", "") or 0) < 0:
+                        projekt["raft_first_layer_expansion"] = "0"
                     daten = json.dumps(projekt, ensure_ascii=False).encode("utf-8")
-                except (json.JSONDecodeError, UnicodeDecodeError):
+                except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
                     pass
             neu.writestr(eintrag, daten)
     return ziel

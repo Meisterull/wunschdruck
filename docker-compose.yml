@@ -10,6 +10,8 @@ services:
       - TZ=Europe/Berlin
     volumes:
       - ./slicer/squashfs-root:/opt/orca:ro
+      # Vanilla-Orca sliced die Mehrfarb-Projekte (Fork-CLI-Bug, siehe slicer.py)
+      - ./slicer/vanilla-root:/opt/vanilla:ro
       - wunschdruck-daten:/data
 
 volumes:

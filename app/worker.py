@@ -68,28 +68,19 @@ def _slicer_lauf():
             anzahl = zeile["anzahl"] or 1
 
             if len(analyse["farben"]) >= 2 and zuordnung:
+                # Mehrfarb-Projekt: Paint-Codes/Extruder auf die Ziel-Slots
+                # ummappen und mit Vanilla-Orca slicen (der Fork crasht daran).
+                # Bei feiner Bemalung erzwingt die UI Identitäts-Zuordnung —
+                # die langen Baum-Codes bleiben dann unangetastet.
                 zuordnung_int = {int(nr): slot for nr, slot in zuordnung.items()}
-                slot_materialien = [s["material"] for s in slots]
-                if analyse.get("fein"):
-                    # Fein bemalt: nicht zerlegbar → Projekt-3MF direkt (nur
-                    # entgiftet, Identitäts-Zuordnung) — best-effort, die CLI
-                    # kann an solchen Dateien scheitern.
-                    quelle = dreimf.ummappen(
-                        quelle, ordner / f"gemappt{quelle.suffix}", zuordnung_int)
-                    ergebnis = slicer.slicen(
-                        quelle, ordner / "ausgabe", "PLA", zeile["qualitaet"],
-                        bool(zeile["stuetzen"]), 1, zeile["platte"],
-                        slot_materialien=slot_materialien, stuetz_slot=stuetz_slot,
-                        ausrichtung=ausrichtung, anzahl=anzahl)
-                else:
-                    # Robuster Weg: Geometrie selbst zerlegen (ein STL je Slot),
-                    # Platzierung übernehmen WIR — Ausrichtung bleibt wie im Modell.
-                    gruppen = dreimf.zerlegen(quelle, ordner / "gruppen", zuordnung_int)
-                    ergebnis = slicer.slicen(
-                        quelle, ordner / "ausgabe", "PLA", zeile["qualitaet"],
-                        bool(zeile["stuetzen"]), 1, zeile["platte"],
-                        slot_materialien=slot_materialien, gruppen=gruppen,
-                        stuetz_slot=stuetz_slot)
+                quelle = dreimf.ummappen(
+                    quelle, ordner / f"gemappt{quelle.suffix}", zuordnung_int)
+                ergebnis = slicer.slicen(
+                    quelle, ordner / "ausgabe", "PLA", zeile["qualitaet"],
+                    bool(zeile["stuetzen"]), 1, zeile["platte"],
+                    slot_materialien=[s["material"] for s in slots],
+                    stuetz_slot=stuetz_slot, ausrichtung=ausrichtung,
+                    anzahl=anzahl, mehrfarb_projekt=True)
             else:
                 # Einfarbige 3MFs entgiften (CLI-giftige eingebettete Settings).
                 if quelle.suffix.lower() == ".3mf":

@@ -46,6 +46,27 @@ def _profil_pfad(name: str) -> Path:
     return ziel
 
 
+# Fork-eigene G-Code-Variablen, die Vanilla-Orca nicht kennt → Literalwert.
+# (Gefunden per Iteration am echten MakerWorld-3MF; 0 = Normalmodus.)
+VANILLA_FORK_VARS = {"chamber_cooling_mode": "0"}
+
+
+def _vanilla_maschine() -> Path:
+    """U1-Maschinenprofil für Vanilla-Orca: Fork-Variablen in den G-Code-
+    Templates durch Literale ersetzt (sonst 'Not a variable name')."""
+    ziel = konfig.PROFIL_CACHE / "vanilla-maschine.json"
+    if ziel.exists():
+        return ziel
+    maschine = json.loads(_profil_pfad(MASCHINE).read_text())
+    for feld, wert in list(maschine.items()):
+        if feld.endswith("_gcode") and isinstance(wert, str):
+            for var, literal in VANILLA_FORK_VARS.items():
+                wert = re.sub(rf"\b{var}\b", literal, wert)
+            maschine[feld] = wert
+    ziel.write_text(json.dumps(maschine, ensure_ascii=False))
+    return ziel
+
+
 def eigene_profile() -> list[str]:
     if not EIGENE_PROFILE.exists():
         return []
@@ -111,7 +132,7 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
            slot_materialien: list[str] | None = None,
            gruppen: list[tuple[Path, int]] | None = None,
            stuetz_slot: int = 0, ausrichtung: str = "auto",
-           anzahl: int = 1) -> dict:
+           anzahl: int = 1, mehrfarb_projekt: bool = False) -> dict:
     """Modell slicen; liefert {'gcode': Path, 'dauer_s': int, 'filament_g': float}.
 
     slot_materialien (Mehrfarb-Pfad): Materialien der 4 physischen Slots in
@@ -123,7 +144,10 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
     Wirft RuntimeError mit den letzten Logzeilen, wenn die CLI scheitert.
     """
     ziel_dir.mkdir(parents=True, exist_ok=True)
-    maschine = _profil_pfad(MASCHINE)
+    # Mehrfarb-Projekte sliced Vanilla-Orca (Fork-CLI crasht daran), mit
+    # angepasstem Maschinenprofil; alles andere der Snapmaker-Fork.
+    appruf = konfig.ORCA_VANILLA if mehrfarb_projekt else konfig.ORCA_APPRUN
+    maschine = _vanilla_maschine() if mehrfarb_projekt else _profil_pfad(MASCHINE)
     filament = _profil_pfad(MATERIAL_PROFIL[material])
 
     # Prozessprofil pro Job kopieren und die Stuetzen-Wahl hineinschreiben.
@@ -150,10 +174,11 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
     else:
         filamente = ";".join([str(filament)] * slot)
     # "wie in Datei": Rotation unangetastet lassen (--orient 0), die Platzierung
-    # auf der Platte übernimmt weiterhin --arrange.
-    orient = "1" if ausrichtung == "auto" else "0"
+    # auf der Platte übernimmt weiterhin --arrange. Mehrfarb-Projekte behalten
+    # IMMER ihre Datei-Ausrichtung (Bemalung ist lageabhängig designt).
+    orient = "1" if (ausrichtung == "auto" and not mehrfarb_projekt) else "0"
     kommando = [
-        konfig.ORCA_APPRUN, "--debug", "1", "--allow-newer-file",
+        appruf, "--debug", "1", "--allow-newer-file",
         "--slice", str(platte), "--arrange", "1", "--orient", orient,
         "--load-settings", f"{maschine};{prozess}",
         "--load-filaments", filamente,

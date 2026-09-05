@@ -16,6 +16,9 @@ HA_WARTUNGSRIEGEL = os.environ.get("HA_WARTUNGSRIEGEL", "")  # z.B. input_boolea
 SPRACHE_STANDARD = os.environ.get("SPRACHE_STANDARD", "de")
 DATEN_DIR = Path(os.environ.get("DATEN_DIR", "/data"))
 ORCA_APPRUN = os.environ.get("ORCA_APPRUN", "/opt/orca/AppRun")
+# Vanilla-OrcaSlicer für Mehrfarb-Projekte: der Snapmaker-Fork (V2.3.6) stürzt
+# bei bemalten Multi-Extruder-3MFs in GUI_App::filaments_cnt ab, Vanilla nicht.
+ORCA_VANILLA = os.environ.get("ORCA_VANILLA", "/opt/vanilla/AppRun")
 PROFILDIR = Path(os.environ.get("PROFILDIR", "/opt/orca/resources/profiles"))
 
 # Wie lange nach dem Einschalten der Steckdose auf Moonraker gewartet wird.
