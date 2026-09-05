@@ -53,11 +53,14 @@ def index(request: Request):
     farben_jobs = {z["id"]: json.loads(z["farben"])
                    for z in jobs if z["status"] == "farbwahl" and z["farben"]}
     verbrauch_jobs = {}
+    mehrfarb_jobs = set()
     for z in jobs:
         if z["verbrauch"]:
             werte = json.loads(z["verbrauch"])
             if werte and sum(1 for w in werte if w > 0) > 1:
                 verbrauch_jobs[z["id"]] = werte
+        if z["farben"] and len(json.loads(z["farben"]).get("farben", [])) >= 2:
+            mehrfarb_jobs.add(z["id"])
     return vorlagen.TemplateResponse(request, "index.html", {
         "t": i18n.t(sp), "sprache": sp,
         "jobs": jobs, "slots": db.slots(),
@@ -65,6 +68,7 @@ def index(request: Request):
         "aktive_status": AKTIVE_STATUS,
         "farben_jobs": farben_jobs,
         "verbrauch_jobs": verbrauch_jobs,
+        "mehrfarb_jobs": mehrfarb_jobs,
         "eigene_profile": slicer.eigene_profile(),
         "kamera_url": konfig.KAMERA_URL,
     })
@@ -101,6 +105,46 @@ def drucken(job_id: str):
     zeile = db.job(job_id)
     if zeile and zeile["status"] == "bereit":
         db.job_update(job_id, status="freigegeben")
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/jobs/{job_id}/neu_slicen")
+async def neu_slicen(request: Request, job_id: str):
+    """Vorhandenen Job mit (geänderten) Einstellungen erneut slicen — die
+    Quelldatei liegt ja noch im Job-Ordner."""
+    zeile = db.job(job_id)
+    if not zeile or zeile["status"] in AKTIVE_STATUS:
+        return RedirectResponse("/", status_code=303)
+    f = await request.form()
+
+    def ganzzahl(name, standard, lo, hi):
+        try:
+            return min(max(int(str(f.get(name, standard))), lo), hi)
+        except ValueError:
+            return standard
+
+    qualitaet = str(f.get("qualitaet", zeile["qualitaet"]))
+    if not (qualitaet in ("fein", "standard", "schnell")
+            or (qualitaet.startswith("eigen:")
+                and qualitaet[6:] in slicer.eigene_profile())):
+        qualitaet = "standard"
+    felder = dict(
+        status="neu", slot=ganzzahl("slot", zeile["slot"], 1, 4),
+        qualitaet=qualitaet,
+        stuetzen=int(str(f.get("stuetzen", "auto")) == "auto"),
+        stuetz_slot=ganzzahl("stuetz_slot", zeile["stuetz_slot"] or 0, 0, 4),
+        ausrichtung="datei" if str(f.get("ausrichtung", zeile["ausrichtung"])) == "datei" else "auto",
+        anzahl=ganzzahl("anzahl", zeile["anzahl"] or 1, 1, 25),
+        platte=ganzzahl("platte", zeile["platte"], 1, 16),
+        dauer_s=None, filament_g=None, verbrauch=None, fortschritt=None,
+        fehler_text=None, gestartet=None,
+    )
+    if f.get("farbwahl_neu"):
+        felder["zuordnung"] = None  # Mehrfarb-Job: Zuordnung neu abfragen
+    db.job_update(job_id, **felder)
+    # Alte Slicing-Ergebnisse weg, sonst greift der Upload spaeter zu stalem G-Code.
+    shutil.rmtree(worker.job_dir(job_id) / "ausgabe", ignore_errors=True)
+    worker.slice_schlange.put(job_id)
     return RedirectResponse("/", status_code=303)
 
 

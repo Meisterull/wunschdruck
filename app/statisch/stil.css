@@ -61,6 +61,11 @@ img.kamera { width: 100%; border-radius: 10px; margin-top: .5rem; }
 .tabelle th, .tabelle td { text-align: left; padding: .35rem .6rem;
                            border-bottom: 1px solid var(--rand); }
 .tabelle th { color: var(--gedeckt); font-weight: 600; font-size: .85rem; }
+details.neuslice { margin-top: .5rem; border-top: 1px solid var(--rand); padding-top: .4rem; }
+details.neuslice summary { cursor: pointer; color: var(--gedeckt); font-size: .9rem; }
+details.neuslice form { margin-top: .6rem; }
+label.zeile { display: flex; gap: .4rem; align-items: center; }
+label.zeile input[type=checkbox] { width: auto; margin: 0; }
 .drucker { font-size: .9rem; }
 a.knopf { display: inline-block; padding: .4rem .8rem; border: 1px solid var(--rand);
           border-radius: 8px; background: var(--grund); color: var(--tinte);

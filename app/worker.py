@@ -56,11 +56,13 @@ def _slicer_lauf():
                 analyse = dreimf.analysiere(quelle)
                 farben_roh = json.dumps(analyse)
                 db.job_update(job_id, farben=farben_roh)
-                if len(analyse["farben"]) >= 2 and not zeile["zuordnung"]:
-                    db.job_update(job_id, status="farbwahl")
-                    continue
             analyse = json.loads(farben_roh) if farben_roh else {"farben": [], "fein": False}
             zuordnung = json.loads(zeile["zuordnung"]) if zeile["zuordnung"] else None
+            # Mehrfarbig ohne Zuordnung → erst der Nutzer (gilt auch beim
+            # Neu-Slicen mit "Farben neu zuordnen").
+            if len(analyse["farben"]) >= 2 and not zuordnung:
+                db.job_update(job_id, status="farbwahl")
+                continue
 
             # Stuetz-Filament nur wirksam, wenn Stuetzen ueberhaupt an sind.
             stuetz_slot = (zeile["stuetz_slot"] or 0) if zeile["stuetzen"] else 0
