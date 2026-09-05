@@ -58,6 +58,10 @@ const anzeige = document.getElementById('ebene_anzeige');
 const szene = new THREE.Scene();
 szene.background = new THREE.Color(0x1c1a17);
 const kamera = new THREE.PerspectiveCamera(45, 1, 1, 4000);
+// WICHTIG: Z ist bei uns oben — und OrbitControls liest die Up-Richtung nur
+// EINMAL beim Erzeugen. Wird sie erst später gesetzt, rotiert die Steuerung
+// intern um die falsche Achse und schlägt beim Drehen um.
+kamera.up.set(0, 0, 1);
 const renderer = new THREE.WebGLRenderer({antialias: true});
 buehne.appendChild(renderer.domElement);
 const steuerung = new THREE.OrbitControls(kamera, renderer.domElement);
@@ -157,7 +161,6 @@ fetch(location.pathname.replace('/ansicht', '/vorschau'))
 
     const dist = Math.max(bx, by, daten.hoehe) * 1.4;
     kamera.position.set(bx / 2 + dist * 0.55, by / 2 - dist * 0.75, dist * 0.7);
-    kamera.up.set(0, 0, 1);
     steuerung.target.set(bx / 2, by / 2, daten.hoehe / 3);
     groesse();
   });
