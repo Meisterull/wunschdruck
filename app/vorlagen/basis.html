@@ -5,16 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ t.titel }}</title>
 <link rel="stylesheet" href="/statisch/stil.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖨️</text></svg>">
+<link rel="icon" href="/statisch/symbol-192.png">
+<link rel="apple-touch-icon" href="/statisch/symbol-192.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#b3591f">
 </head>
 <body>
 <header>
   <a class="marke" href="/">🖨️ {{ t.titel }}</a>
   <nav>
+    <a href="/historie">📜 {{ t.historie }}</a>
     <a href="/einstellungen">⚙️ {{ t.einstellungen }}</a>
     <a href="/sprache/{{ 'en' if sprache == 'de' else 'de' }}">{{ 'EN' if sprache == 'de' else 'DE' }}</a>
   </nav>
 </header>
+<script>
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
+</script>
 <main>
 {% block inhalt %}{% endblock %}
 </main>

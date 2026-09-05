@@ -22,6 +22,13 @@ PROFILDIR = Path(os.environ.get("PROFILDIR", "/opt/orca/resources/profiles"))
 EINSCHALT_TIMEOUT_S = int(os.environ.get("EINSCHALT_TIMEOUT_S", "300"))
 # Zeitlimit fuer einen Slice-Lauf.
 SLICE_TIMEOUT_S = int(os.environ.get("SLICE_TIMEOUT_S", "900"))
+# Fertige/verworfene/fehlgeschlagene Jobs nach so vielen Tagen automatisch
+# loeschen (0 = nie aufraeumen).
+AUFRAEUMEN_TAGE = int(os.environ.get("AUFRAEUMEN_TAGE", "14"))
+# Optionaler Kamera-Stream des Druckers (MJPEG-/Snapshot-URL); leer = keine
+# Kamera. Die Stock-U1-Firmware liefert keinen Stream, die Extended-Firmware
+# z.B. http://<drucker>/webcam/stream.mjpg
+KAMERA_URL = os.environ.get("KAMERA_URL", "")
 
 JOBS_DIR = DATEN_DIR / "jobs"
 PROFIL_CACHE = DATEN_DIR / "profil-cache"

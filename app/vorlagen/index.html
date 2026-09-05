@@ -60,6 +60,9 @@
           <option value="datei">{{ t.ausrichtung_datei }}</option>
         </select>
       </label>
+      <label>{{ t.anzahl }}
+        <input type="number" name="anzahl" value="1" min="1" max="25">
+      </label>
       <label>{{ t.platte }}
         <input type="number" name="platte" value="1" min="1" max="16">
       </label>
@@ -82,8 +85,23 @@
       {% if j.dauer_s %}⏱️ {{ t.dauer }}: {{ dauer_text(j.dauer_s) }} · {% endif %}
       {% if j.filament_g %}🧵 {{ t.filament }}: {{ '%.1f'|format(j.filament_g) }} g · {% endif %}
       Slot {{ j.slot }} · {{ t[j.qualitaet] if j.qualitaet in t else j.qualitaet[6:] }}
+      {%- if j.anzahl and j.anzahl > 1 %} · {{ j.anzahl }}×{% endif %}
       {%- if j.ausrichtung == 'datei' %} · 📌 {{ t.ausrichtung_datei }}{% endif %}
     </div>
+    {% if verbrauch_jobs.get(j.id) %}
+    <div class="jobdaten">
+      {% for g in verbrauch_jobs[j.id] %}{% if g > 0 %}
+      <span class="farbchip" style="background: {{ (slots[loop.index0].hex if slots[loop.index0].get('hex') else '#9e9e9e') if loop.index0 < 4 else '#9e9e9e' }}"></span>
+      Slot {{ loop.index }}: {{ '%.1f'|format(g) }} g&nbsp;
+      {% endif %}{% endfor %}
+    </div>
+    {% endif %}
+    {% if j.status == 'druckt' %}
+    <div class="balken"><div class="balken-fuellung" style="width: {{ j.fortschritt or 0 }}%"></div></div>
+    <div class="jobdaten">🖨️ {{ '%.0f'|format(j.fortschritt or 0) }} %
+      {%- if j.dauer_s and j.fortschritt %} · ⏳ ~{{ dauer_text(j.dauer_s * (100 - j.fortschritt) / 100) }}{% endif %}</div>
+    {% if kamera_url %}<img class="kamera" src="{{ kamera_url }}" alt="Kamera">{% endif %}
+    {% endif %}
     {% if j.fehler_text %}<pre class="fehler">{{ j.fehler_text }}</pre>{% endif %}
     {% if j.status == 'farbwahl' and farben_jobs.get(j.id) %}
     {% set analyse = farben_jobs[j.id] %}

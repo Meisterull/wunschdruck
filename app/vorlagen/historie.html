@@ -1,0 +1,27 @@
+{% extends "basis.html" %}
+{% block inhalt %}
+<section class="karte">
+  <h2>📜 {{ t.historie_titel }}</h2>
+  {% if eintraege is none %}
+  <p class="hinweis">💤 {{ t.historie_offline }}</p>
+  {% elif not eintraege %}
+  <p class="hinweis">{{ t.historie_leer }}</p>
+  {% else %}
+  <div class="tabelle">
+    <table>
+      <tr><th>{{ t.historie_datei }}</th><th>{{ t.historie_status }}</th>
+          <th>{{ t.dauer }}</th><th>{{ t.filament }}</th></tr>
+      {% for e in eintraege %}
+      <tr>
+        <td>{{ e.filename }}</td>
+        <td>{% if e.status == 'completed' %}✅{% elif e.status == 'cancelled' %}✖️{% elif e.status == 'in_progress' %}🔄{% else %}⚠️{% endif %}</td>
+        <td>{{ dauer_text(e.print_duration) }}</td>
+        <td>{% if e.filament_used %}{{ '%.1f'|format(e.filament_used / 1000) }} m{% else %}–{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endif %}
+</section>
+<p><a href="/">← {{ t.zurueck }}</a></p>
+{% endblock %}

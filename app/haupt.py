@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -52,13 +52,21 @@ def index(request: Request):
     jobs = db.jobs_alle()
     farben_jobs = {z["id"]: json.loads(z["farben"])
                    for z in jobs if z["status"] == "farbwahl" and z["farben"]}
+    verbrauch_jobs = {}
+    for z in jobs:
+        if z["verbrauch"]:
+            werte = json.loads(z["verbrauch"])
+            if werte and sum(1 for w in werte if w > 0) > 1:
+                verbrauch_jobs[z["id"]] = werte
     return vorlagen.TemplateResponse(request, "index.html", {
         "t": i18n.t(sp), "sprache": sp,
         "jobs": jobs, "slots": db.slots(),
         "drucker": drucker_status(),
         "aktive_status": AKTIVE_STATUS,
         "farben_jobs": farben_jobs,
+        "verbrauch_jobs": verbrauch_jobs,
         "eigene_profile": slicer.eigene_profile(),
+        "kamera_url": konfig.KAMERA_URL,
     })
 
 
@@ -66,7 +74,8 @@ def index(request: Request):
 async def hochladen(request: Request, datei: UploadFile = File(...),
                     slot: int = Form(1), qualitaet: str = Form("standard"),
                     stuetzen: str = Form("auto"), platte: int = Form(1),
-                    stuetz_slot: int = Form(0), ausrichtung: str = Form("auto")):
+                    stuetz_slot: int = Form(0), ausrichtung: str = Form("auto"),
+                    anzahl: int = Form(1)):
     endung = Path(datei.filename or "").suffix.lower()
     qualitaet_ok = (qualitaet in ("fein", "standard", "schnell")
                     or (qualitaet.startswith("eigen:")
@@ -77,7 +86,8 @@ async def hochladen(request: Request, datei: UploadFile = File(...),
     job_id = db.job_anlegen(Path(datei.filename).name, slot, qualitaet,
                             stuetzen == "auto", max(platte, 1),
                             stuetz_slot=min(max(stuetz_slot, 0), 4),
-                            ausrichtung="datei" if ausrichtung == "datei" else "auto")
+                            ausrichtung="datei" if ausrichtung == "datei" else "auto",
+                            anzahl=min(max(anzahl, 1), 25))
     ordner = worker.job_dir(job_id)
     ordner.mkdir(parents=True, exist_ok=True)
     with (ordner / f"quelle{endung}").open("wb") as ziel:
@@ -235,6 +245,43 @@ async def einstellungen_speichern(request: Request):
             slots.append({"material": "leer", "farbe": "", "hex": ""})
     db.einstellung_setzen("slots", slots)
     return RedirectResponse("/einstellungen?gespeichert=1", status_code=303)
+
+
+@app.post("/teilen")
+async def teilen(datei: UploadFile = File(...)):
+    """PWA-Share-Target: vom Handy geteilte 3MF/STL wird mit Standard-Werten
+    als Job angelegt (Slot 1, Standard-Qualität, Stützen auto)."""
+    endung = Path(datei.filename or "").suffix.lower()
+    if endung not in ERLAUBTE_ENDUNGEN:
+        return RedirectResponse("/?fehler=format", status_code=303)
+    job_id = db.job_anlegen(Path(datei.filename).name, 1, "standard", True, 1)
+    ordner = worker.job_dir(job_id)
+    ordner.mkdir(parents=True, exist_ok=True)
+    with (ordner / f"quelle{endung}").open("wb") as ziel:
+        shutil.copyfileobj(datei.file, ziel)
+    worker.slice_schlange.put(job_id)
+    return RedirectResponse("/", status_code=303)
+
+
+@app.get("/historie")
+def historie(request: Request):
+    sp = sprache(request)
+    eintraege = moonraker.historie() if moonraker.konfiguriert() else None
+    return vorlagen.TemplateResponse(request, "historie.html", {
+        "t": i18n.t(sp), "sprache": sp, "eintraege": eintraege,
+    })
+
+
+@app.get("/manifest.webmanifest")
+def manifest():
+    return FileResponse(Path(__file__).parent / "statisch" / "manifest.webmanifest",
+                        media_type="application/manifest+json")
+
+
+@app.get("/sw.js")
+def service_worker():
+    return FileResponse(Path(__file__).parent / "statisch" / "sw.js",
+                        media_type="text/javascript")
 
 
 @app.get("/sprache/{neue}")

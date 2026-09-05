@@ -85,8 +85,9 @@ def _dauer_sekunden(text: str) -> int:
 
 def gcode_metadaten(gcode: Path) -> dict:
     """Zeit und Verbrauch aus den Orca-Kommentaren ziehen — die stehen je nach
-    Version im Kopf ODER im Fussteil, daher die ganze Datei scannen."""
-    dauer_s, gewicht = None, None
+    Version im Kopf ODER im Fussteil, daher die ganze Datei scannen.
+    verbrauch: Gramm je Filament-Slot (Komma-Liste im G-Code)."""
+    dauer_s, gewicht, verbrauch = None, None, None
     with gcode.open(encoding="utf-8", errors="replace") as f:
         for zeile in f:
             if not zeile.startswith(";"):
@@ -95,16 +96,22 @@ def gcode_metadaten(gcode: Path) -> dict:
                 dauer_s = _dauer_sekunden(zeile.split("=", 1)[1])
             elif zeile.startswith("; total filament used [g]"):
                 gewicht = float(zeile.split("=", 1)[1])
-            if dauer_s is not None and gewicht is not None:
+            elif zeile.startswith("; filament used [g]"):
+                try:
+                    verbrauch = [float(w) for w in zeile.split("=", 1)[1].split(",")]
+                except ValueError:
+                    pass
+            if dauer_s is not None and gewicht is not None and verbrauch is not None:
                 break
-    return {"dauer_s": dauer_s, "filament_g": gewicht}
+    return {"dauer_s": dauer_s, "filament_g": gewicht, "verbrauch": verbrauch}
 
 
 def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
            stuetzen: bool, slot: int, platte: int,
            slot_materialien: list[str] | None = None,
            gruppen: list[tuple[Path, int]] | None = None,
-           stuetz_slot: int = 0, ausrichtung: str = "auto") -> dict:
+           stuetz_slot: int = 0, ausrichtung: str = "auto",
+           anzahl: int = 1) -> dict:
     """Modell slicen; liefert {'gcode': Path, 'dauer_s': int, 'filament_g': float}.
 
     slot_materialien (Mehrfarb-Pfad): Materialien der 4 physischen Slots in
@@ -156,6 +163,12 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
     ]
     if slot > 1 and not gruppen:
         kommando[1:1] = ["--load-filament-ids", str(slot)]
+    if anzahl > 1 and not gruppen:
+        # Mehrere Exemplare; --arrange packt sie auf die Platte. Der Wert ist die
+        # GESAMT-Stueckzahl (verifiziert: 3 -> 3 Wuerfel). --repetitions lehnt
+        # der Platten-Modus ab ("can not set repetitions when slice all").
+        # Im Gruppen-Pfad (eigene Platzierung) laegen Kopien uebereinander — tabu.
+        kommando[1:1] = ["--clone-objects", str(anzahl)]
 
     if gruppen:
         # Eigene Platzierung aus dreimf.zerlegen — Arrange/Orient wuerden die

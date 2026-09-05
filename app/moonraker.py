@@ -36,6 +36,29 @@ def frei() -> bool:
     return zustand() in ("standby", "complete", "cancelled")
 
 
+def fortschritt(timeout: float = 5.0) -> float | None:
+    """Druckfortschritt 0..1 (None wenn nicht ermittelbar)."""
+    try:
+        r = httpx.get(
+            f"{konfig.MOONRAKER_URL}/printer/objects/query",
+            params={"display_status": ""}, timeout=timeout)
+        r.raise_for_status()
+        return r.json()["result"]["status"]["display_status"].get("progress")
+    except (httpx.HTTPError, KeyError):
+        return None
+
+
+def historie(limit: int = 40, timeout: float = 8.0) -> list[dict] | None:
+    """Abgeschlossene Drucke aus der Moonraker-Historie (None = nicht erreichbar)."""
+    try:
+        r = httpx.get(f"{konfig.MOONRAKER_URL}/server/history/list",
+                      params={"limit": limit, "order": "desc"}, timeout=timeout)
+        r.raise_for_status()
+        return r.json()["result"].get("jobs", [])
+    except (httpx.HTTPError, KeyError):
+        return None
+
+
 def hochladen(gcode: Path, name: str, timeout: float = 120.0) -> None:
     """G-Code in den Drucker-Dateispeicher legen (ohne Druckstart)."""
     with gcode.open("rb") as f:

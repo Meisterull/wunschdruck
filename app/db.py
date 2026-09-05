@@ -41,7 +41,9 @@ def _conn() -> sqlite3.Connection:
         # Nachrüst-Spalten für Bestands-Datenbanken
         for spalte in ("farben TEXT", "zuordnung TEXT",
                        "stuetz_slot INTEGER NOT NULL DEFAULT 0",
-                       "ausrichtung TEXT NOT NULL DEFAULT 'auto'"):
+                       "ausrichtung TEXT NOT NULL DEFAULT 'auto'",
+                       "anzahl INTEGER NOT NULL DEFAULT 1",
+                       "fortschritt REAL", "verbrauch TEXT"):
             try:
                 c.execute(f"ALTER TABLE jobs ADD COLUMN {spalte}")
             except sqlite3.OperationalError:
@@ -51,16 +53,24 @@ def _conn() -> sqlite3.Connection:
 
 
 def job_anlegen(name: str, slot: int, qualitaet: str, stuetzen: bool, platte: int,
-                stuetz_slot: int = 0, ausrichtung: str = "auto") -> str:
+                stuetz_slot: int = 0, ausrichtung: str = "auto", anzahl: int = 1) -> str:
     job_id = uuid.uuid4().hex[:8]
     with _conn() as c:
         c.execute(
             "INSERT INTO jobs (id,name,status,slot,qualitaet,stuetzen,platte,erstellt,"
-            "stuetz_slot,ausrichtung) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "stuetz_slot,ausrichtung,anzahl) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (job_id, name, "neu", slot, qualitaet, int(stuetzen), platte, time.time(),
-             stuetz_slot, ausrichtung),
+             stuetz_slot, ausrichtung, anzahl),
         )
     return job_id
+
+
+def jobs_abgelaufen(tage: int):
+    """Abgeschlossene Jobs, deren letzter Stand älter als `tage` ist."""
+    schwelle = time.time() - tage * 86400
+    return _conn().execute(
+        "SELECT id FROM jobs WHERE status IN ('fertig','verworfen','fehler')"
+        " AND COALESCE(gestartet, erstellt) < ?", (schwelle,)).fetchall()
 
 
 def job(job_id: str):

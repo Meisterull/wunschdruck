@@ -65,6 +65,7 @@ def _slicer_lauf():
             # Stuetz-Filament nur wirksam, wenn Stuetzen ueberhaupt an sind.
             stuetz_slot = (zeile["stuetz_slot"] or 0) if zeile["stuetzen"] else 0
             ausrichtung = zeile["ausrichtung"] or "auto"
+            anzahl = zeile["anzahl"] or 1
 
             if len(analyse["farben"]) >= 2 and zuordnung:
                 zuordnung_int = {int(nr): slot for nr, slot in zuordnung.items()}
@@ -79,7 +80,7 @@ def _slicer_lauf():
                         quelle, ordner / "ausgabe", "PLA", zeile["qualitaet"],
                         bool(zeile["stuetzen"]), 1, zeile["platte"],
                         slot_materialien=slot_materialien, stuetz_slot=stuetz_slot,
-                        ausrichtung=ausrichtung)
+                        ausrichtung=ausrichtung, anzahl=anzahl)
                 else:
                     # Robuster Weg: Geometrie selbst zerlegen (ein STL je Slot),
                     # Platzierung übernehmen WIR — Ausrichtung bleibt wie im Modell.
@@ -100,9 +101,10 @@ def _slicer_lauf():
                     quelle, ordner / "ausgabe", material, zeile["qualitaet"],
                     bool(zeile["stuetzen"]), zeile["slot"], zeile["platte"],
                     slot_materialien=slot_materialien, stuetz_slot=stuetz_slot,
-                    ausrichtung=ausrichtung)
+                    ausrichtung=ausrichtung, anzahl=anzahl)
             db.job_update(job_id, status="bereit",
-                          dauer_s=ergebnis["dauer_s"], filament_g=ergebnis["filament_g"])
+                          dauer_s=ergebnis["dauer_s"], filament_g=ergebnis["filament_g"],
+                          verbrauch=json.dumps(ergebnis.get("verbrauch")))
             ha.melden(_texte()["meldung_bereit"].format(
                 name=zeile["name"], dauer=dauer_text(ergebnis["dauer_s"]),
                 gewicht=ergebnis["filament_g"]))
@@ -167,13 +169,33 @@ def _druckende_pruefen():
     for zeile in db.jobs_mit_status("druckt"):
         zustand = moonraker.zustand()
         if zustand == "complete":
-            db.job_update(zeile["id"], status="fertig")
+            db.job_update(zeile["id"], status="fertig", fortschritt=100.0)
             ha.melden(_texte()["meldung_fertig"].format(name=zeile["name"]))
         elif zustand == "cancelled":
             db.job_update(zeile["id"], status="verworfen")
         elif zustand == "error":
             db.job_update(zeile["id"], status="fehler", fehler_text="Drucker meldet Fehler.")
-        # offline/printing/standby: nichts tun — naechste Runde
+        elif zustand in ("printing", "paused"):
+            anteil = moonraker.fortschritt()
+            if anteil is not None:
+                db.job_update(zeile["id"], fortschritt=round(anteil * 100, 1))
+        # offline/standby: nichts tun — naechste Runde
+
+
+_letzte_aufraeumung = 0.0
+
+
+def _aufraeumen():
+    """Abgeschlossene Jobs nach AUFRAEUMEN_TAGE loeschen (1x pro 6 h geprueft)."""
+    global _letzte_aufraeumung
+    if not konfig.AUFRAEUMEN_TAGE or time.time() - _letzte_aufraeumung < 6 * 3600:
+        return
+    _letzte_aufraeumung = time.time()
+    for zeile in db.jobs_abgelaufen(konfig.AUFRAEUMEN_TAGE):
+        db.job_loeschen(zeile["id"])
+        slicer.aufraeumen(job_dir(zeile["id"]))
+        log.info("Job %s automatisch aufgeraeumt (> %d Tage)",
+                 zeile["id"], konfig.AUFRAEUMEN_TAGE)
 
 
 def _drucker_lauf():
@@ -181,6 +203,7 @@ def _drucker_lauf():
         try:
             _freigegebene_abarbeiten()
             _druckende_pruefen()
+            _aufraeumen()
         except Exception:
             log.exception("Drucker-Runde fehlgeschlagen")
         time.sleep(20)
