@@ -69,9 +69,17 @@ def gcode_metadaten(gcode: Path) -> dict:
 
 
 def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
-           stuetzen: bool, slot: int, platte: int) -> dict:
+           stuetzen: bool, slot: int, platte: int,
+           slot_materialien: list[str] | None = None,
+           gruppen: list[tuple[Path, int]] | None = None) -> dict:
     """Modell slicen; liefert {'gcode': Path, 'dauer_s': int, 'filament_g': float}.
 
+    slot_materialien (Mehrfarb-Pfad): Materialien der 4 physischen Slots in
+    Reihenfolge – es werden 4 Filament-Profile geladen; `material`/`slot` sind
+    dann ohne Bedeutung.
+    gruppen (robuster Mehrfarb-Weg): [(stl, slot)] aus dreimf.zerlegen – die
+    STLs liegen schon plattenzentriert, darum arrange/orient AUS und die
+    Slot-Nummern gehen als --load-filament-ids mit.
     Wirft RuntimeError mit den letzten Logzeilen, wenn die CLI scheitert.
     """
     ziel_dir.mkdir(parents=True, exist_ok=True)
@@ -88,9 +96,14 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
 
     # Slot N drucken heisst: N Filament-Eintraege laden und dem Objekt die
     # Filament-ID N geben — die CLI zaehlt dabei ab 1.
-    filamente = ";".join([str(filament)] * slot)
+    if slot_materialien:
+        filamente = ";".join(
+            str(_profil_pfad(MATERIAL_PROFIL.get(m, MATERIAL_PROFIL["PLA"])))
+            for m in slot_materialien)
+    else:
+        filamente = ";".join([str(filament)] * slot)
     kommando = [
-        konfig.ORCA_APPRUN, "--debug", "1",
+        konfig.ORCA_APPRUN, "--debug", "1", "--allow-newer-file",
         "--slice", str(platte), "--arrange", "1", "--orient", "1",
         "--load-settings", f"{maschine};{prozess}",
         "--load-filaments", filamente,
@@ -98,8 +111,16 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
         "--outputdir", str(ziel_dir),
         str(quelle),
     ]
-    if slot > 1:
+    if slot > 1 and not slot_materialien:
         kommando[1:1] = ["--load-filament-ids", str(slot)]
+
+    if gruppen:
+        # Eigene Platzierung aus dreimf.zerlegen — Arrange/Orient wuerden die
+        # ausgerichteten Gruppen auseinanderreissen.
+        kommando[kommando.index("--arrange") + 1] = "0"
+        kommando[kommando.index("--orient") + 1] = "0"
+        kommando[1:1] = ["--load-filament-ids", ",".join(str(s) for _, s in gruppen)]
+        kommando = kommando[:-1] + [str(p) for p, _ in gruppen]
 
     log = ziel_dir / "slice.log"
     with log.open("w") as logdatei:

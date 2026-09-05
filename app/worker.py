@@ -5,13 +5,14 @@ Zwei Threads:
 - Drucker-Thread: schaut zyklisch nach freigegebenen Jobs (Strom-Kette,
   Upload, Start) und nach laufenden Drucken (fertig/Fehler erkennen).
 """
+import json
 import logging
 import queue
 import threading
 import time
 from pathlib import Path
 
-from . import db, ha, i18n, konfig, moonraker, slicer
+from . import db, dreimf, ha, i18n, konfig, moonraker, slicer
 
 log = logging.getLogger("wunschdruck.worker")
 
@@ -47,9 +48,48 @@ def _slicer_lauf():
         slots = db.slots()
         material = slots[zeile["slot"] - 1]["material"]
         try:
-            ergebnis = slicer.slicen(
-                quellen[0], ordner / "ausgabe", material, zeile["qualitaet"],
-                bool(zeile["stuetzen"]), zeile["slot"], zeile["platte"])
+            quelle = quellen[0]
+            # Mehrfarb-Erkennung: 3MFs einmalig analysieren; nutzt das Modell
+            # mehrere Farben, wartet der Job auf die Slot-Zuordnung in der UI.
+            farben_roh = zeile["farben"]
+            if quelle.suffix.lower() == ".3mf" and farben_roh is None:
+                analyse = dreimf.analysiere(quelle)
+                farben_roh = json.dumps(analyse)
+                db.job_update(job_id, farben=farben_roh)
+                if len(analyse["farben"]) >= 2 and not zeile["zuordnung"]:
+                    db.job_update(job_id, status="farbwahl")
+                    continue
+            analyse = json.loads(farben_roh) if farben_roh else {"farben": [], "fein": False}
+            zuordnung = json.loads(zeile["zuordnung"]) if zeile["zuordnung"] else None
+
+            if len(analyse["farben"]) >= 2 and zuordnung:
+                zuordnung_int = {int(nr): slot for nr, slot in zuordnung.items()}
+                slot_materialien = [s["material"] for s in slots]
+                if analyse.get("fein"):
+                    # Fein bemalt: nicht zerlegbar → Projekt-3MF direkt (nur
+                    # entgiftet, Identitäts-Zuordnung) — best-effort, die CLI
+                    # kann an solchen Dateien scheitern.
+                    quelle = dreimf.ummappen(
+                        quelle, ordner / f"gemappt{quelle.suffix}", zuordnung_int)
+                    ergebnis = slicer.slicen(
+                        quelle, ordner / "ausgabe", "PLA", zeile["qualitaet"],
+                        bool(zeile["stuetzen"]), 1, zeile["platte"],
+                        slot_materialien=slot_materialien)
+                else:
+                    # Robuster Weg: Geometrie selbst zerlegen (ein STL je Slot),
+                    # Platzierung übernehmen WIR — Ausrichtung bleibt wie im Modell.
+                    gruppen = dreimf.zerlegen(quelle, ordner / "gruppen", zuordnung_int)
+                    ergebnis = slicer.slicen(
+                        quelle, ordner / "ausgabe", "PLA", zeile["qualitaet"],
+                        bool(zeile["stuetzen"]), 1, zeile["platte"],
+                        slot_materialien=slot_materialien, gruppen=gruppen)
+            else:
+                # Einfarbige 3MFs entgiften (CLI-giftige eingebettete Settings).
+                if quelle.suffix.lower() == ".3mf":
+                    quelle = dreimf.ummappen(quelle, ordner / f"gemappt{quelle.suffix}", {})
+                ergebnis = slicer.slicen(
+                    quelle, ordner / "ausgabe", material, zeile["qualitaet"],
+                    bool(zeile["stuetzen"]), zeile["slot"], zeile["platte"])
             db.job_update(job_id, status="bereit",
                           dauer_s=ergebnis["dauer_s"], filament_g=ergebnis["filament_g"])
             ha.melden(_texte()["meldung_bereit"].format(

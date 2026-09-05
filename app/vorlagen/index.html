@@ -61,6 +61,27 @@
       Slot {{ j.slot }} · {{ t[j.qualitaet] }}
     </div>
     {% if j.fehler_text %}<pre class="fehler">{{ j.fehler_text }}</pre>{% endif %}
+    {% if j.status == 'farbwahl' and farben_jobs.get(j.id) %}
+    {% set analyse = farben_jobs[j.id] %}
+    <form action="/jobs/{{ j.id }}/farben" method="post" class="farbwahl">
+      <p class="hinweis">🎨 {{ t.farbwahl_titel }}{% if analyse.fein %} — {{ t.fein_hinweis }}{% endif %}</p>
+      <div class="reihe">
+        {% for f in analyse.farben %}
+        <label>
+          <span class="farbchip" style="background: {{ f.hex }}"></span> {{ t.farbe }} {{ f.nr }}
+          <select name="farbe_{{ f.nr }}" {% if analyse.fein %}disabled{% endif %}>
+            {% for s in slots %}
+            <option value="{{ loop.index }}" {% if loop.index == (f.nr if f.nr <= 4 else 1) %}selected{% endif %}>
+              Slot {{ loop.index }} — {{ t.leer if s.material == 'leer' else s.material }}{% if s.farbe %} ({{ s.farbe }}){% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </label>
+        {% endfor %}
+      </div>
+      <button type="submit" class="gruen">🎨 {{ t.farbwahl_los }}</button>
+    </form>
+    {% endif %}
     <div class="aktionen">
       {% if j.status in ('bereit', 'freigegeben', 'sendet', 'druckt', 'fertig') %}
       <a class="knopf" href="/jobs/{{ j.id }}/ansicht">🧊 {{ t.ansicht3d }}</a>

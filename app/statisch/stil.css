@@ -42,6 +42,9 @@ button.rot { background: var(--rot); }
 .fehler { background: var(--grund); border-radius: 8px; padding: .5rem;
           font-size: .8rem; overflow-x: auto; white-space: pre-wrap; color: var(--rot); }
 .slotnummer { font-weight: 600; align-self: center; }
+.farbchip { display: inline-block; width: 1em; height: 1em; border-radius: 4px;
+            border: 1px solid var(--rand); vertical-align: -0.15em; }
+.farbwahl { margin-top: .5rem; border-top: 1px solid var(--rand); padding-top: .5rem; }
 .drucker { font-size: .9rem; }
 a.knopf { display: inline-block; padding: .4rem .8rem; border: 1px solid var(--rand);
           border-radius: 8px; background: var(--grund); color: var(--tinte);

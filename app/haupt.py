@@ -1,5 +1,6 @@
 """Wunschdruck — Web-Oberflaeche (FastAPI + Jinja2, bewusst schlicht und handy-tauglich)."""
 import contextlib
+import json
 import logging
 import shutil
 from pathlib import Path
@@ -47,11 +48,15 @@ def drucker_status() -> str:
 @app.get("/")
 def index(request: Request):
     sp = sprache(request)
+    jobs = db.jobs_alle()
+    farben_jobs = {z["id"]: json.loads(z["farben"])
+                   for z in jobs if z["status"] == "farbwahl" and z["farben"]}
     return vorlagen.TemplateResponse(request, "index.html", {
         "t": i18n.t(sp), "sprache": sp,
-        "jobs": db.jobs_alle(), "slots": db.slots(),
+        "jobs": jobs, "slots": db.slots(),
         "drucker": drucker_status(),
         "aktive_status": AKTIVE_STATUS,
+        "farben_jobs": farben_jobs,
     })
 
 
@@ -84,8 +89,32 @@ def drucken(job_id: str):
 @app.post("/jobs/{job_id}/verwerfen")
 def verwerfen(job_id: str):
     zeile = db.job(job_id)
-    if zeile and zeile["status"] in ("bereit", "freigegeben", "fehler"):
+    if zeile and zeile["status"] in ("bereit", "freigegeben", "fehler", "farbwahl"):
         db.job_update(job_id, status="verworfen")
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/jobs/{job_id}/farben")
+async def farben_zuordnen(request: Request, job_id: str):
+    """Farb-Zuordnung (Modell-Farbe → Slot) speichern und den Job slicen lassen."""
+    zeile = db.job(job_id)
+    if not zeile or zeile["status"] != "farbwahl" or not zeile["farben"]:
+        return RedirectResponse("/", status_code=303)
+    analyse = json.loads(zeile["farben"])
+    formular = await request.form()
+    zuordnung = {}
+    for f in analyse["farben"]:
+        nr = f["nr"]
+        if analyse.get("fein"):
+            slot = min(nr, 4)  # feine Bemalung: Zuordnung bleibt fest 1:1
+        else:
+            try:
+                slot = int(str(formular.get(f"farbe_{nr}", nr)))
+            except ValueError:
+                slot = nr
+        zuordnung[nr] = min(max(slot, 1), 4)
+    db.job_update(job_id, zuordnung=json.dumps(zuordnung), status="neu")
+    worker.slice_schlange.put(job_id)
     return RedirectResponse("/", status_code=303)
 
 

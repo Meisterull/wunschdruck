@@ -38,6 +38,12 @@ def _conn() -> sqlite3.Connection:
         c.row_factory = sqlite3.Row
         c.execute("PRAGMA journal_mode=WAL")
         c.executescript(SCHEMA)
+        # Nachrüst-Spalten (Mehrfarb-Stufe) für Bestands-Datenbanken
+        for spalte in ("farben TEXT", "zuordnung TEXT"):
+            try:
+                c.execute(f"ALTER TABLE jobs ADD COLUMN {spalte}")
+            except sqlite3.OperationalError:
+                pass  # Spalte existiert schon
         _lokal.conn = c
     return _lokal.conn
 
