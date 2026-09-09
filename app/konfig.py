@@ -9,7 +9,7 @@ MOONRAKER_URL = os.environ.get("MOONRAKER_URL", "").rstrip("/")
 # automatische Steckdose, der Rest funktioniert unveraendert.
 HA_URL = os.environ.get("HA_URL", "").rstrip("/")
 HA_TOKEN = os.environ.get("HA_TOKEN", "")
-HA_NOTIFY = os.environ.get("HA_NOTIFY", "")               # z.B. notify.sebastian
+HA_NOTIFY = os.environ.get("HA_NOTIFY", "")               # z.B. notify.mein_telegram
 HA_SWITCH = os.environ.get("HA_SWITCH", "")               # z.B. switch.3d_drucker
 HA_WARTUNGSRIEGEL = os.environ.get("HA_WARTUNGSRIEGEL", "")  # z.B. input_boolean.drucker_wartung
 

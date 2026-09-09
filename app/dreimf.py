@@ -4,7 +4,7 @@ Bambu-/Orca-Projekt-3MFs tragen die Farbinformation an zwei Stellen:
 - Metadata/model_settings.config: <metadata key="extruder" value="N"/> je
   Objekt/Teil (Ganzteil-Zuweisung)
 - 3D/3dmodel.model: paint_color="…" je Dreieck. Einheitlich bemalte Dreiecke
-  haben kurze Codes ((filament-1)*4 als Hex: "4"=2, "8"=3, "C"=4 …); fein
+  haben kurze Codes (Filament-Index*4 als Hex: "4"=1, "8"=2, "C"=3 …); fein
   gepinselte Bereiche haben lange Baum-Codes, die wir NICHT umschreiben –
   dann muss die Zuordnung 1:1 bleiben.
 
