@@ -3,10 +3,11 @@
 Bambu-/Orca-Projekt-3MFs tragen die Farbinformation an zwei Stellen:
 - Metadata/model_settings.config: <metadata key="extruder" value="N"/> je
   Objekt/Teil (Ganzteil-Zuweisung)
-- 3D/3dmodel.model: paint_color="…" je Dreieck. Einheitlich bemalte Dreiecke
-  haben kurze Codes (Filament-Index*4 als Hex: "4"=1, "8"=2, "C"=3 …); fein
-  gepinselte Bereiche haben lange Baum-Codes, die wir NICHT umschreiben –
-  dann muss die Zuordnung 1:1 bleiben.
+- 3D/3dmodel.model: paint_color="…" je Dreieck — der Bitstrom von
+  PrusaSlicers TriangleSelector (siehe _code_lesen): ganz bemalte Dreiecke
+  sind ein Blatt ("4"=Filament 1, "8"=2, "0C"=3, "1C"=4 …), fein gepinselte
+  ein Teilungsbaum. Beides wird hier vollständig dekodiert und neu kodiert;
+  nur unlesbare Codes erzwingen die feste 1:1-Zuordnung.
 
 Die Werkzeugnummer im G-Code ist fest an den Filament-Index gekoppelt
 (Filament i → T(i-1) → physischer Slot i). "Farbe → anderer Slot" heißt
@@ -27,18 +28,121 @@ _PAINT_RE = re.compile(r'paint_color="([0-9A-Fa-f]+)"')
 _EXTRUDER_RE = re.compile(r'key="extruder"\s+value="(\d+)"')
 
 
-def _uniform_index(code: str) -> int | None:
-    """Kurzer Einheits-Code → Filament-Index (1-basiert), sonst None.
+# ---------------------------------------------------------------------------
+# Paint-Codes: Bitstrom des TriangleSelector (PrusaSlicer/Orca/Bambu)
+#
+# Je Dreieck ein Hex-String; der 3MF-Leser liest ihn RÜCKWÄRTS (letzte Ziffer
+# zuerst), jede Ziffer liefert 4 Bits, niederwertigstes zuerst. Knoten:
+#   2 Bit Anzahl geteilter Seiten; 0 = Blatt, dann 2 Bit Zustand, wobei
+#   Zustand 3 "erweitert" heißt: 4 weitere Bits, Zustand = 3 + Wert.
+#   Sonst 2 Bit Sonderseite und (Seiten+1) Kind-Knoten rekursiv.
+# Zustand n>0 = Filament n. Darum: "4" = Filament 1, "8" = 2, "0C" = 3,
+# "1C" = 4 — ein naives Filament*4 ("10" für Slot 4) dekodiert der Slicer als
+# Zustand 0 = unbemalt, und die Farbe fällt lautlos weg (Befund 12.09.2026).
+# ---------------------------------------------------------------------------
 
-    Encoding = Filament-Index * 4 ("4"=1, "8"=2, "C"=3, "10"=4) — am echten
-    MakerWorld-Caliper verifiziert (Code "8" druckte nachweislich Filament 2;
-    die frühere +1-Formel hat die Farben um eins verschoben)."""
-    if len(code) > 2:
+def _bits_aus_code(code: str) -> list[int]:
+    bits: list[int] = []
+    for ziffer in reversed(code):
+        wert = int(ziffer, 16)
+        bits.extend((wert >> i) & 1 for i in range(4))
+    return bits
+
+
+def _code_aus_bits(bits: list[int]) -> str:
+    bits = bits + [0] * (-len(bits) % 4)
+    nibbles = [sum(bits[k + i] << i for i in range(4)) for k in range(0, len(bits), 4)]
+    return "".join(f"{n:X}" for n in reversed(nibbles))
+
+
+def _knoten_lesen(bits: list[int], pos: int):
+    """Liefert (Knoten, nächste Position). Blatt = int (Zustand),
+    Teilung = (sonderseite, [Kinder]). IndexError bei kaputtem Strom."""
+    seiten = bits[pos] | (bits[pos + 1] << 1)
+    pos += 2
+    if seiten:
+        sonder = bits[pos] | (bits[pos + 1] << 1)
+        pos += 2
+        kinder = []
+        for _ in range(seiten + 1):
+            kind, pos = _knoten_lesen(bits, pos)
+            kinder.append(kind)
+        return (sonder, kinder), pos
+    zustand = bits[pos] | (bits[pos + 1] << 1)
+    pos += 2
+    if zustand == 3:
+        zustand = 3 + sum(bits[pos + i] << i for i in range(4))
+        pos += 4
+    return zustand, pos
+
+
+def _knoten_schreiben(knoten, bits: list[int]) -> None:
+    if isinstance(knoten, tuple):
+        sonder, kinder = knoten
+        seiten = len(kinder) - 1
+        bits.extend((seiten & 1, seiten >> 1, sonder & 1, sonder >> 1))
+        for kind in kinder:
+            _knoten_schreiben(kind, bits)
+        return
+    bits.extend((0, 0))
+    if knoten >= 3:
+        rest = knoten - 3
+        bits.extend((1, 1, rest & 1, (rest >> 1) & 1, (rest >> 2) & 1, (rest >> 3) & 1))
+    else:
+        bits.extend((knoten & 1, knoten >> 1))
+
+
+def _code_lesen(code: str):
+    """Paint-Code → Baum, None wenn unlesbar."""
+    try:
+        knoten, _ = _knoten_lesen(_bits_aus_code(code), 0)
+    except (IndexError, ValueError):
         return None
-    wert = int(code, 16)
-    if wert % 4 != 0 or wert == 0:
+    return knoten
+
+
+def _code_schreiben(knoten) -> str:
+    bits: list[int] = []
+    _knoten_schreiben(knoten, bits)
+    return _code_aus_bits(bits)
+
+
+def _zustaende(knoten, ziel: set[int]) -> None:
+    if isinstance(knoten, tuple):
+        for kind in knoten[1]:
+            _zustaende(kind, ziel)
+    elif knoten > 0:
+        ziel.add(knoten)
+
+
+def _ummappen_baum(knoten, zuordnung: dict[int, int]):
+    if isinstance(knoten, tuple):
+        return (knoten[0], [_ummappen_baum(k, zuordnung) for k in knoten[1]])
+    return zuordnung.get(knoten, knoten) if knoten > 0 else knoten
+
+
+def _uniform_index(code: str) -> int | None:
+    """Ganz bemaltes Dreieck → Filament-Index (1-basiert), sonst None."""
+    knoten = _code_lesen(code)
+    return knoten if isinstance(knoten, int) and knoten > 0 else None
+
+
+def filamente_im_code(code: str) -> set[int] | None:
+    """Alle Filament-Indizes eines Paint-Codes (auch Teilungsbäume); None = unlesbar."""
+    knoten = _code_lesen(code)
+    if knoten is None:
         return None
-    return wert // 4
+    benutzt: set[int] = set()
+    _zustaende(knoten, benutzt)
+    return benutzt
+
+
+def code_ummappen(code: str, zuordnung: dict[int, int]) -> str:
+    """Paint-Code mit umgemappten Filament-Indizes; unlesbare Codes unverändert."""
+    knoten = _code_lesen(code)
+    if knoten is None:
+        return code
+    return _code_schreiben(_ummappen_baum(knoten, zuordnung))
 
 
 def analysiere(pfad: Path) -> dict:
@@ -72,11 +176,11 @@ def analysiere(pfad: Path) -> dict:
                         codes.update(_PAINT_RE.findall(rest + stueck))
                         rest = stueck[-2000:]  # lange Baum-Codes können Chunk-Grenzen kreuzen
             for code in codes:
-                idx = _uniform_index(code)
-                if idx:
-                    benutzt.add(idx)
+                indizes = filamente_im_code(code)
+                if indizes is None:
+                    fein = True  # unlesbar → Zuordnung bleibt sicherheitshalber 1:1
                 else:
-                    fein = True
+                    benutzt.update(indizes)
 
             farbliste = []
             if "Metadata/project_settings.config" in namen:
@@ -89,7 +193,7 @@ def analysiere(pfad: Path) -> dict:
             if benutzt or fein:
                 benutzt.add(1)  # unbemalte Flächen drucken mit Filament 1
             if fein:
-                # Feine Bemalung: genaue Indizes unbekannt → alle Projekt-Filamente zeigen.
+                # Unlesbare Codes: genaue Indizes unbekannt → alle Projekt-Filamente zeigen.
                 benutzt.update(range(1, max(len(farbliste), max(benutzt, default=1)) + 1))
 
             ergebnis["fein"] = fein
@@ -108,16 +212,14 @@ def ummappen(quelle: Path, ziel: Path, zuordnung: dict[int, int]) -> Path:
     wie wipe_tower_filament crashen die CLI auch aus dem 3MF heraus — darum
     laufen auch einfarbige 3MFs mit leerer Zuordnung hier durch).
 
-    Nur Ganzteil-Zuweisungen und Einheits-Codes werden umgeschrieben — der
-    Aufrufer stellt sicher, dass bei feiner Bemalung Identität erzwungen ist.
+    Ganzteil-Zuweisungen und Paint-Codes (auch fein gepinselte Teilungsbäume)
+    werden umgeschrieben; unlesbare Codes bleiben unverändert — der Aufrufer
+    erzwingt in dem Fall Identität.
     """
 
     def paint_ersetzen(m: re.Match) -> str:
-        idx = _uniform_index(m.group(1))
-        slot = zuordnung.get(idx) if idx else None
-        if not slot:
-            return m.group(0)
-        return f'paint_color="{slot * 4:X}"'
+        neu = code_ummappen(m.group(1), zuordnung)
+        return m.group(0) if neu == m.group(1) else f'paint_color="{neu}"'
 
     def extruder_ersetzen(m: re.Match) -> str:
         slot = zuordnung.get(int(m.group(1)))

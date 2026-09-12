@@ -5,3 +5,4 @@ arbeit/
 __pycache__/
 *.pyc
 docker-compose.override.yml
+ssl/

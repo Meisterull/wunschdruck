@@ -12,7 +12,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import db, dreimf, ha, i18n, konfig, moonraker, slicer
+from . import db, dreimf, ha, i18n, konfig, lager, miniatur, moonraker, slicer
 
 log = logging.getLogger("wunschdruck.worker")
 
@@ -68,7 +68,8 @@ def _slicer_lauf():
             stuetz_slot = (zeile["stuetz_slot"] or 0) if zeile["stuetzen"] else 0
             ausrichtung = zeile["ausrichtung"] or "auto"
             anzahl = zeile["anzahl"] or 1
-            extra = {"fuellung": zeile["fuellung"],
+            extra = {"slot_farben": [s["hex"] for s in slots],
+                     "fuellung": zeile["fuellung"],
                      "stuetz_art": zeile["stuetz_art"] or "profil",
                      "waende": zeile["waende"],
                      "deckschichten": zeile["deckschichten"],
@@ -77,8 +78,8 @@ def _slicer_lauf():
             if len(analyse["farben"]) >= 2 and zuordnung:
                 # Mehrfarb-Projekt: Paint-Codes/Extruder auf die Ziel-Slots
                 # ummappen und mit Vanilla-Orca slicen (der Fork crasht daran).
-                # Bei feiner Bemalung erzwingt die UI Identitäts-Zuordnung —
-                # die langen Baum-Codes bleiben dann unangetastet.
+                # Auch fein gepinselte Teilungsbäume werden umkodiert; nur bei
+                # unlesbaren Codes erzwingt die UI die Identitäts-Zuordnung.
                 zuordnung_int = {int(nr): slot for nr, slot in zuordnung.items()}
                 quelle = dreimf.ummappen(
                     quelle, ordner / f"gemappt{quelle.suffix}", zuordnung_int)
@@ -100,9 +101,16 @@ def _slicer_lauf():
                     bool(zeile["stuetzen"]), zeile["slot"], zeile["platte"],
                     slot_materialien=slot_materialien, stuetz_slot=stuetz_slot,
                     ausrichtung=ausrichtung, anzahl=anzahl, **extra)
+            # Vorschaubild für den Drucker-Touchscreen (die CLI liefert keins);
+            # ein Fehler hier darf den fertigen Job nicht kippen.
+            try:
+                miniatur.gcode_bebildern(ergebnis["gcode"], [s["hex"] for s in slots])
+            except Exception:
+                log.exception("Thumbnails fehlgeschlagen: %s", job_id)
             db.job_update(job_id, status="bereit",
                           dauer_s=ergebnis["dauer_s"], filament_g=ergebnis["filament_g"],
-                          verbrauch=json.dumps(ergebnis.get("verbrauch")))
+                          verbrauch=json.dumps(ergebnis.get("verbrauch")),
+                          filament_mm=ergebnis.get("filament_mm"))
             ha.melden(_texte()["meldung_bereit"].format(
                 name=zeile["name"], dauer=dauer_text(ergebnis["dauer_s"]),
                 gewicht=ergebnis["filament_g"]))
@@ -196,11 +204,31 @@ def _aufraeumen():
                  zeile["id"], konfig.AUFRAEUMEN_TAGE)
 
 
+_letzte_verbuchung = 0.0
+
+
+def _lager_pflegen():
+    """Fortschritt laufender Wunschdruck-Drucke merken (Abbruch-Fallback) und
+    jede Minute die Drucker-Historie auf die Rollen buchen."""
+    global _letzte_verbuchung
+    if not moonraker.konfiguriert():
+        return
+    stand = moonraker.druckstand(timeout=3)
+    if stand is None:
+        return  # Drucker aus — nichts zu buchen
+    if stand["zustand"] in ("printing", "paused") and lager.job_id_aus_datei(stand["datei"]):
+        lager.fortschritt_merken(stand["datei"], stand["fortschritt"])
+    if time.time() - _letzte_verbuchung >= 60:
+        _letzte_verbuchung = time.time()
+        lager.historie_verbuchen(moonraker.historie(limit=15))
+
+
 def _drucker_lauf():
     while True:
         try:
             _freigegebene_abarbeiten()
             _druckende_pruefen()
+            _lager_pflegen()
             _aufraeumen()
         except Exception:
             log.exception("Drucker-Runde fehlgeschlagen")

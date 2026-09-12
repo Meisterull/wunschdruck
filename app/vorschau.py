@@ -172,9 +172,17 @@ def gcode_vorschau(gcode: Path) -> dict:
 def vorschau_laden(gcode: Path) -> dict:
     """Vorschau aus dem Cache neben dem G-Code, bei Bedarf frisch gerechnet.
     (Suffix v4: Klassen-Schema + Arc-Tesselation mit 'fuellung' — alte Caches nicht wiederverwenden.)"""
-    cache = gcode.with_suffix(".vorschau4.json")
+    cache = _cache_pfad(gcode)
     if cache.exists() and cache.stat().st_mtime >= gcode.stat().st_mtime:
         return json.loads(cache.read_text())
     daten = gcode_vorschau(gcode)
-    cache.write_text(json.dumps(daten, separators=(",", ":")))
+    cache_schreiben(gcode, daten)
     return daten
+
+
+def _cache_pfad(gcode: Path) -> Path:
+    return gcode.with_suffix(".vorschau4.json")
+
+
+def cache_schreiben(gcode: Path, daten: dict) -> None:
+    _cache_pfad(gcode).write_text(json.dumps(daten, separators=(",", ":")))

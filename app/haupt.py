@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import shutil
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
@@ -11,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import db, i18n, konfig, moonraker, slicer, vorschau, worker
+from . import db, i18n, konfig, moonraker, slicer, thingiverse, vorschau, worker
 
 logging.basicConfig(level=logging.INFO)
 
@@ -31,6 +32,7 @@ app = FastAPI(title="Wunschdruck", lifespan=lebenslauf)
 app.mount("/statisch", StaticFiles(directory=Path(__file__).parent / "statisch"), name="statisch")
 vorlagen = Jinja2Templates(directory=Path(__file__).parent / "vorlagen")
 vorlagen.env.globals["dauer_text"] = worker.dauer_text
+vorlagen.env.filters["datum"] = lambda ts: time.strftime("%d.%m.%Y %H:%M", time.localtime(ts or 0))
 
 
 def sprache(request: Request) -> str:
@@ -102,9 +104,22 @@ def index(request: Request):
                 alles_ok = alles_ok and passt
                 zeilen.append({"slot": s, "konf": konf, "ist": ist, "passt": passt})
             abgleich[z["id"]] = {"zeilen": zeilen, "ok": alles_ok}
+    # Rollen-Lager: Rest je Slot und Warnung, wenn ein Job mehr braucht.
+    rollen = db.rollen_map()
+    slot_rest = [rollen[s["rolle_id"]]["rest_g"] if s.get("rolle_id") in rollen else None
+                 for s in slots_cfg]
+    rest_warnungen = {}
+    for z in jobs:
+        if z["status"] != "bereit" or not z["verbrauch"]:
+            continue
+        for i, g in enumerate(json.loads(z["verbrauch"])[:4]):
+            if g > 0 and slot_rest[i] is not None and g > slot_rest[i]:
+                rest_warnungen.setdefault(z["id"], []).append(
+                    {"slot": i + 1, "bedarf": g, "rest": slot_rest[i]})
     return vorlagen.TemplateResponse(request, "index.html", {
         "t": i18n.t(sp), "sprache": sp,
         "jobs": jobs, "slots": slots_cfg,
+        "slot_rest": slot_rest, "rest_warnungen": rest_warnungen,
         "drucker": drucker,
         "abgleich": abgleich,
         "gesendet": request.query_params.get("gesendet"),
@@ -243,7 +258,7 @@ async def farben_zuordnen(request: Request, job_id: str):
     for f in analyse["farben"]:
         nr = f["nr"]
         if analyse.get("fein"):
-            slot = min(nr, 4)  # feine Bemalung: Zuordnung bleibt fest 1:1
+            slot = min(nr, 4)  # unlesbare Paint-Codes: Zuordnung bleibt fest 1:1
         else:
             try:
                 slot = int(str(formular.get(f"farbe_{nr}", nr)))
@@ -291,9 +306,15 @@ def vorschau_daten(job_id: str):
 @app.get("/einstellungen")
 def einstellungen(request: Request, gespeichert: bool = False, profilfehler: bool = False):
     sp = sprache(request)
+    slots_cfg = db.slots()
+    rollen = db.rollen()
     return vorlagen.TemplateResponse(request, "einstellungen.html", {
-        "t": i18n.t(sp), "sprache": sp, "slots": db.slots(),
-        "lager": db.lager(), "gespeichert": gespeichert,
+        "t": i18n.t(sp), "sprache": sp, "slots": slots_cfg,
+        "rollen": rollen, "archiv": db.rollen(archiv=True),
+        "im_slot": {s["rolle_id"]: i + 1 for i, s in enumerate(slots_cfg) if s.get("rolle_id")},
+        "verlauf": {r["id"]: db.verlauf(r["id"]) for r in rollen},
+        "heute": time.strftime("%Y-%m-%d"),
+        "gespeichert": gespeichert,
         "eigene_profile": slicer.eigene_profile(), "profilfehler": profilfehler,
     })
 
@@ -337,46 +358,79 @@ def _hex_sicher(wert: str) -> str:
     return wert if re.fullmatch(r"#[0-9a-fA-F]{6}", wert) else "#9e9e9e"
 
 
-@app.post("/einstellungen/lager")
-async def lager_anlegen(request: Request):
-    """Filament ins Lager legen (Material + Farbname + Farbe)."""
-    formular = await request.form()
+def _gramm(wert) -> float | None:
+    """Gramm-Feld: leer = unbekannt, Komma erlaubt."""
+    roh = str(wert or "").strip().replace(",", ".")
+    if not roh:
+        return None
+    try:
+        return max(0.0, round(float(roh), 1))
+    except ValueError:
+        return None
+
+
+def _rollen_felder(formular) -> dict:
     material = str(formular.get("material", "PLA"))
     if material not in ("PLA", "PETG", "TPU"):
         material = "PLA"
-    name = str(formular.get("name", "")).strip()[:40]
-    eintrag = {"material": material, "name": name,
-               "hex": _hex_sicher(formular.get("hex", ""))}
-    lager = db.lager()
-    lager.append(eintrag)
-    db.einstellung_setzen("lager", lager)
+    return {"material": material,
+            "farbe": str(formular.get("farbe", "")).strip()[:40],
+            "hex": _hex_sicher(formular.get("hex", "")),
+            "hersteller": str(formular.get("hersteller", "")).strip()[:60],
+            "netto_g": _gramm(formular.get("netto_g")),
+            "rest_g": _gramm(formular.get("rest_g")),
+            "kaufdatum": str(formular.get("kaufdatum", "")).strip()[:10],
+            "notiz": str(formular.get("notiz", "")).strip()[:200]}
+
+
+@app.post("/einstellungen/rollen")
+async def rolle_anlegen(request: Request):
+    """Neue Filamentrolle ins Lager (Rest leer = unbekannt)."""
+    db.rolle_anlegen(**_rollen_felder(await request.form()))
     return RedirectResponse("/einstellungen", status_code=303)
 
 
-@app.post("/einstellungen/lager/{index}/loeschen")
-def lager_loeschen(index: int):
-    lager = db.lager()
-    if 0 <= index < len(lager):
-        lager.pop(index)
-        db.einstellung_setzen("lager", lager)
+@app.post("/einstellungen/rollen/{rolle_id}")
+async def rolle_aendern(request: Request, rolle_id: int):
+    """Stammdaten/Rest einer Rolle aendern (Rest-Aenderung = Korrektur im Verlauf)."""
+    db.rolle_update(rolle_id, **_rollen_felder(await request.form()))
+    return RedirectResponse("/einstellungen", status_code=303)
+
+
+@app.post("/einstellungen/rollen/{rolle_id}/archiv")
+def rolle_archivieren(rolle_id: int):
+    db.rolle_update(rolle_id, archiviert=1)
+    return RedirectResponse("/einstellungen", status_code=303)
+
+
+@app.post("/einstellungen/rollen/{rolle_id}/zurueck")
+def rolle_zurueckholen(rolle_id: int):
+    db.rolle_update(rolle_id, archiviert=0)
+    return RedirectResponse("/einstellungen", status_code=303)
+
+
+@app.post("/einstellungen/rollen/{rolle_id}/loeschen")
+def rolle_loeschen(rolle_id: int):
+    db.rolle_loeschen(rolle_id)
     return RedirectResponse("/einstellungen", status_code=303)
 
 
 @app.post("/einstellungen")
 async def einstellungen_speichern(request: Request):
-    """Slots aus dem Lager bestücken. Der gewählte Lager-Eintrag wird in den
-    Slot KOPIERT — löscht man ihn später aus dem Lager, bleibt der Slot gültig."""
+    """Slots mit Rollen bestücken. Die Rollendaten werden in den Slot KOPIERT
+    (plus rolle_id fuer den Verbrauchsabzug) — wird die Rolle spaeter
+    archiviert oder geloescht, bleibt der Slot gueltig."""
     formular = await request.form()
-    lager = db.lager()
+    rollen = db.rollen_map()
     slots = []
     for i in range(1, 5):
         wahl = str(formular.get(f"slot{i}", "leer"))
-        if wahl.isdigit() and int(wahl) < len(lager):
-            eintrag = lager[int(wahl)]
-            slots.append({"material": eintrag["material"],
-                          "farbe": eintrag["name"], "hex": eintrag["hex"]})
+        r = rollen.get(int(wahl)) if wahl.isdigit() else None
+        if r is not None and not r["archiviert"]:
+            slots.append({"material": r["material"], "farbe": r["farbe"],
+                          "hex": r["hex"], "rolle_id": r["id"]})
         else:
-            slots.append({"material": "leer", "farbe": "", "hex": ""})
+            slots.append({"material": "leer", "farbe": "", "hex": "", "rolle_id": None})
     db.einstellung_setzen("slots", slots)
     return RedirectResponse("/einstellungen?gespeichert=1", status_code=303)
 
@@ -393,6 +447,89 @@ async def teilen(datei: UploadFile = File(...)):
     ordner.mkdir(parents=True, exist_ok=True)
     with (ordner / f"quelle{endung}").open("wb") as ziel:
         shutil.copyfileobj(datei.file, ziel)
+    worker.slice_schlange.put(job_id)
+    return RedirectResponse("/", status_code=303)
+
+
+def _job_einstellungen(f) -> dict:
+    """Job-Felder eines Formulars (jobfelder.html) → Argumente fuer db.job_anlegen."""
+    def ganz(name, standard, lo, hi):
+        try:
+            return min(max(int(str(f.get(name, standard))), lo), hi)
+        except ValueError:
+            return standard
+    qualitaet = str(f.get("qualitaet", "standard"))
+    if not (qualitaet in ("fein", "standard", "schnell")
+            or (qualitaet.startswith("eigen:") and qualitaet[6:] in slicer.eigene_profile())):
+        qualitaet = "standard"
+    stuetz_art = str(f.get("stuetz_art", "profil"))
+    return dict(
+        slot=ganz("slot", 1, 1, 4), qualitaet=qualitaet,
+        stuetzen=str(f.get("stuetzen", "auto")) == "auto", platte=ganz("platte", 1, 1, 16),
+        stuetz_slot=ganz("stuetz_slot", 0, 0, 4),
+        ausrichtung="datei" if str(f.get("ausrichtung", "auto")) == "datei" else "auto",
+        anzahl=ganz("anzahl", 1, 1, 25), fuellung=_fuellung_wert(str(f.get("fuellung", ""))),
+        stuetz_art=stuetz_art if stuetz_art in ("profil", "baum", "normal") else "profil",
+        waende=_opt_int(str(f.get("waende", "")), 1, 10),
+        deckschichten=_opt_int(str(f.get("deckschichten", "")), 0, 15),
+        bodenschichten=_opt_int(str(f.get("bodenschichten", "")), 0, 15))
+
+
+@app.get("/suche")
+def suche(request: Request, q: str = "", seite: int = 1):
+    """Modelle finden: Link-Kacheln (MakerWorld/Thingiverse im Browser) und,
+    mit App-Token, die Thingiverse-Suche direkt in der App."""
+    sp = sprache(request)
+    ergebnis, fehler = None, request.query_params.get("fehler")
+    if q.strip() and thingiverse.konfiguriert():
+        try:
+            ergebnis = thingiverse.suchen(q, max(1, seite))
+        except thingiverse.ApiFehler as e:
+            logging.getLogger("wunschdruck").warning("Thingiverse-Suche: %s", e)
+            fehler = "ratelimit" if e.ratelimit else "api"
+    return vorlagen.TemplateResponse(request, "suche.html", {
+        "t": i18n.t(sp), "sprache": sp, "q": q.strip(), "seite": max(1, seite),
+        "ergebnis": ergebnis, "fehler": fehler,
+        "konfiguriert": thingiverse.konfiguriert(),
+    })
+
+
+@app.get("/suche/thing/{thing_id}")
+def thing_seite(request: Request, thing_id: int, q: str = ""):
+    sp = sprache(request)
+    if not thingiverse.konfiguriert():
+        return RedirectResponse("/suche", status_code=303)
+    try:
+        info = thingiverse.thing(thing_id)
+        dateien = thingiverse.dateien(thing_id)
+        bilder = thingiverse.bilder(thing_id)
+    except thingiverse.ApiFehler as e:
+        logging.getLogger("wunschdruck").warning("Thingiverse-Thing %s: %s", thing_id, e)
+        return RedirectResponse(f"/suche?q={q}&fehler={'ratelimit' if e.ratelimit else 'api'}",
+                                status_code=303)
+    return vorlagen.TemplateResponse(request, "thing.html", {
+        "t": i18n.t(sp), "sprache": sp, "q": q, "info": info, "dateien": dateien,
+        "bilder": bilder, "slots": db.slots(), "eigene_profile": slicer.eigene_profile(),
+    })
+
+
+@app.post("/suche/thing/{thing_id}/datei/{datei_id}")
+async def thing_datei_job(request: Request, thing_id: int, datei_id: int):
+    """Datei von Thingiverse in einen neuen Job laden und slicen. Der Job
+    entsteht vor dem Download, damit ein Fehler sichtbar an der Karte landet."""
+    if not thingiverse.konfiguriert():
+        return RedirectResponse("/suche", status_code=303)
+    felder = _job_einstellungen(await request.form())
+    job_id = db.job_anlegen(f"thingiverse-{thing_id}-{datei_id}", **felder)
+    ordner = worker.job_dir(job_id)
+    ordner.mkdir(parents=True, exist_ok=True)
+    try:
+        _, name = thingiverse.herunterladen(thing_id, datei_id, ordner)
+    except Exception as e:
+        logging.getLogger("wunschdruck").exception("Thingiverse-Download fehlgeschlagen")
+        db.job_update(job_id, status="fehler", fehler_text=f"Thingiverse: {e}"[:2000])
+        return RedirectResponse("/", status_code=303)
+    db.job_update(job_id, name=Path(name).name)
     worker.slice_schlange.put(job_id)
     return RedirectResponse("/", status_code=303)
 

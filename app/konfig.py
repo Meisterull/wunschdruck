@@ -32,6 +32,9 @@ AUFRAEUMEN_TAGE = int(os.environ.get("AUFRAEUMEN_TAGE", "14"))
 # Kamera. Die Stock-U1-Firmware liefert keinen Stream, die Extended-Firmware
 # z.B. http://<drucker>/webcam/stream.mjpg
 KAMERA_URL = os.environ.get("KAMERA_URL", "")
+# Thingiverse-Suche in der App (optional): App-Token von thingiverse.com/developers.
+# Leer = nur die Link-Kacheln (Browser + Teilen-Ziel).
+THINGIVERSE_TOKEN = os.environ.get("THINGIVERSE_TOKEN", "")
 
 JOBS_DIR = DATEN_DIR / "jobs"
 PROFIL_CACHE = DATEN_DIR / "profil-cache"

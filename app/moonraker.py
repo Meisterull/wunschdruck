@@ -62,6 +62,21 @@ def filamente(timeout: float = 4.0) -> list[dict] | None:
             for i in range(4)]
 
 
+def druckstand(timeout: float = 4.0) -> dict | None:
+    """{zustand, datei, fortschritt} in einer Abfrage — auch fuer Drucke, die
+    am Geraet gestartet wurden. None = nicht erreichbar."""
+    try:
+        r = httpx.get(f"{konfig.MOONRAKER_URL}/printer/objects/query",
+                      params={"print_stats": "", "display_status": ""}, timeout=timeout)
+        r.raise_for_status()
+        status = r.json()["result"]["status"]
+        return {"zustand": status["print_stats"].get("state", "standby"),
+                "datei": status["print_stats"].get("filename") or "",
+                "fortschritt": (status.get("display_status") or {}).get("progress")}
+    except (httpx.HTTPError, KeyError, ValueError):
+        return None
+
+
 def fortschritt(timeout: float = 5.0) -> float | None:
     """Druckfortschritt 0..1 (None wenn nicht ermittelbar)."""
     try:

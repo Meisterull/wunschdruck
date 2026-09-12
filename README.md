@@ -40,10 +40,16 @@ because getting the Orca CLI to slice headless for the U1 cost days — see
 - **Multi-color 3MFs** (MakerWorld / Bambu / Orca projects with painted
   colors): the app reads the project's colors and lets you map each color to a
   physical slot 1–4. Prime tower stays on, as the U1 profiles intend.
-- **Filament stock and slots**: keep a list of what you own (material, color
-  name, hex), fill the printer's four slots from it. When the printer is
-  reachable, each job card compares the required slots with what is *actually*
-  loaded (Moonraker `print_task_config`) and warns before you approve.
+- **Spool stock and slots**: every spool you own is an entry (material,
+  color, brand, net weight, remaining grams, purchase date, note) with its own
+  history; fill the printer's four slots from that list. Every finished
+  Wunschdruck print is deducted from the spool in each slot automatically —
+  whether started from the app or at the printer, cancelled prints
+  proportionally (Moonraker history, booked exactly once). The home page
+  shows the remaining grams per slot, and a job card warns when it needs more
+  than the spool has left. When the printer is reachable, each job card also
+  compares the required slots with what is *actually* loaded (Moonraker
+  `print_task_config`) and warns before you approve.
 - **3D preview of the sliced G-code**: real placement on the 270 × 270 plate,
   layer slider, per-slot colors, supports translucent, infill toggle, look
   under the plate to check first-layer text. three.js, runs on phones.
@@ -57,6 +63,11 @@ because getting the Orca CLI to slice headless for the U1 cost days — see
   usage per slot, automatic cleanup of old jobs.
 - Notifications through any HA notify service (Telegram, mobile app, …):
   sliced, started, finished, failed.
+- **Find models**: link tiles for MakerWorld and Thingiverse (download in the
+  browser, then share the file into the app), and with a Thingiverse app token
+  a search page inside Wunschdruck: results with images, model page with
+  license and author, pick an STL/3MF, set the job options, done — the file
+  is downloaded straight into the container and sliced.
 - German / English UI, optional camera stream URL.
 
 <p align="center">
@@ -129,6 +140,7 @@ slicing. Keys in `.env`:
 | Key | Meaning |
 |---|---|
 | `HA_URL`, `HA_TOKEN` | HA base URL and a long-lived access token |
+| `THINGIVERSE_TOKEN` | optional: app token from thingiverse.com/developers — enables the in-app Thingiverse search and download |
 | `HA_NOTIFY` | notify service for messages, e.g. `notify.mobile_app_phone` |
 | `HA_SWITCH` | smart plug of the printer, e.g. `switch.printer_plug` |
 | `HA_WARTUNGSRIEGEL` | `input_boolean` maintenance lock; when on, the app refuses to power the printer up |
@@ -162,9 +174,24 @@ drive the Orca CLI headless for a U1 yourself, this list may save you a week.
   Vanilla OrcaSlicer 2.4.2 slices them with the same flattened U1 profiles;
   the only fork-specific G-code variable, `chamber_cooling_mode`, has to be
   replaced by a literal.
-- Painted triangles carry `paint_color` codes. Short codes map to a filament
-  index (decoder in `app/dreimf.py`); long tree codes are fine-brushed areas
-  the app leaves untouched, so the mapping must stay 1:1 there.
+- Painted triangles carry `paint_color` codes: the bit stream of PrusaSlicer's
+  `TriangleSelector`, hex digits read **backwards**, 4 bits each. A fully
+  painted triangle is `4` = filament 1, `8` = 2, `0C` = 3, `1C` = 4 — it is
+  *not* "filament × 4": writing `10` for filament 4 decodes as *unpainted*
+  and the colour silently vanishes. `app/dreimf.py` decodes and re-encodes
+  the whole tree, so fine-brushed areas can be remapped too.
+- **The CLI writes no thumbnails headless** (no GL context), and the U1
+  touchscreen then shows a placeholder for the job. The app renders its own
+  PNGs from the sliced paths (`app/miniatur.py`, Pillow) and inserts an
+  Orca-style `; thumbnail begin WxH` block after the header — Moonraker
+  picks it up like a desktop-sliced file.
+- **The G-code's `filament_colour` never reflects your slots.** The fork
+  writes its profile default (`#F2754E`) for STLs, and a project 3MF keeps its
+  original colour list (a Bambu PVA slot became `#00000000`). The U1 matches
+  G-code filaments to loaded slots by type *and colour*, so it proposed slot 1
+  for both colours of a two-colour print. The app writes the slot colours from
+  its settings into the slot profiles and, as a safety net, rewrites
+  `filament_colour`/`extruder_colour` in the G-code config block.
 - Project 3MFs written by a newer slicer need `--allow-newer-file`.
 - `--clone-objects N` is the **total** count; `--repetitions` refuses plate
   mode.

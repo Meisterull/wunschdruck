@@ -74,3 +74,31 @@ a.knopf { display: inline-block; padding: .4rem .8rem; border: 1px solid var(--r
 #buehne canvas { display: block; }
 .regler { display: flex; gap: 1rem; align-items: center; }
 .regler input[type=range] { padding: 0; }
+
+/* Rollen-Lager */
+details.rolle { border-bottom: 1px solid var(--rand); padding: .3rem 0; }
+details.rolle summary { display: flex; align-items: center; gap: .6rem; cursor: pointer; list-style: none; }
+details.rolle summary::-webkit-details-marker { display: none; }
+details.rolle summary .lagername { flex: 1; }
+details.rolle summary .rest { font-weight: 600; white-space: nowrap; }
+details.rolle summary .zustand { color: var(--gedeckt); font-size: .85rem; white-space: nowrap; }
+details.rolle form.reihe { margin-top: .6rem; }
+details.rolle h3 { font-size: .95rem; margin: .8rem 0 .3rem; }
+details.rolle .balken { margin: .4rem 0 0; }
+.slotsinfo { display: flex; flex-wrap: wrap; gap: .3rem 1.2rem; color: var(--gedeckt); font-size: .9rem; margin: -.3rem 0 .8rem; }
+.slotsinfo .rest { color: var(--tinte); }
+.warn { color: var(--rot); font-size: .9rem; margin-top: .3rem; }
+
+/* Modelle finden */
+.kacheln { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: .6rem; margin-bottom: .6rem; }
+.kachel { display: block; text-align: center; padding: .9rem .6rem; border: 1px solid var(--rand); border-radius: 10px;
+          background: var(--grund); color: var(--tinte); text-decoration: none; font-weight: 600; }
+.treffer { display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: .6rem; margin-top: .6rem; }
+.thing { display: flex; flex-direction: column; gap: .2rem; border: 1px solid var(--rand); border-radius: 10px;
+         padding: .4rem; color: var(--tinte); text-decoration: none; background: var(--grund); }
+.thing img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 8px; }
+.thing .thingname { font-size: .9rem; line-height: 1.25; }
+.bilder { display: flex; gap: .5rem; overflow-x: auto; padding-bottom: .3rem; }
+.bilder img { height: 9rem; border-radius: 8px; flex: none; }
+.beschreibung { font-size: .9rem; color: var(--gedeckt); }
+details.datei summary { font-weight: 600; color: var(--tinte); }

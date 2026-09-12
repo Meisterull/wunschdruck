@@ -8,6 +8,15 @@
     {%- else %} ⚠️ {{ t.fehler_kein_moonraker }}{% endif %}</span>
 </p>
 
+<p class="slotsinfo">
+  {% for s in slots %}<span>Slot {{ loop.index }}:
+    {%- if s.material == 'leer' %} {{ t.leer }}
+    {%- else %} <span class="farbchip" style="background: {{ s.hex or '#9e9e9e' }}"></span> {{ s.material }}{% if s.farbe %} {{ s.farbe }}{% endif %}
+      {%- if slot_rest[loop.index0] is not none %} · <span class="rest">{{ '%.0f'|format(slot_rest[loop.index0]) }} g</span>{% endif %}
+    {%- endif %}</span>
+  {% endfor %}
+</p>
+
 {% if gesendet %}<p class="ok">✅ {{ t.gesendet_meldung }}</p>{% endif %}
 {% if sendefehler %}<p class="fehler">⚠️ {{ t.sendefehler_meldung }}</p>{% endif %}
 
@@ -17,78 +26,7 @@
     <label>{{ t.datei_waehlen }}
       <input type="file" name="datei" accept=".stl,.3mf" required>
     </label>
-    <div class="reihe">
-      <label>{{ t.slot }}
-        <select name="slot">
-          {% for s in slots %}
-          <option value="{{ loop.index }}" {% if s.material == 'leer' %}disabled{% endif %}>
-            {{ loop.index }} — {{ t.leer if s.material == 'leer' else s.material }}{% if s.farbe %} ({{ s.farbe }}){% endif %}
-          </option>
-          {% endfor %}
-        </select>
-      </label>
-      <label>{{ t.qualitaet }}
-        <select name="qualitaet">
-          <option value="standard">{{ t.standard }}</option>
-          <option value="fein">{{ t.fein }}</option>
-          <option value="schnell">{{ t.schnell }}</option>
-          {% if eigene_profile %}
-          <optgroup label="{{ t.profile_gruppe }}">
-            {% for p in eigene_profile %}
-            <option value="eigen:{{ p }}">{{ p }}</option>
-            {% endfor %}
-          </optgroup>
-          {% endif %}
-        </select>
-      </label>
-      <label>{{ t.stuetzen }}
-        <select name="stuetzen">
-          <option value="auto">{{ t.stuetzen_auto }}</option>
-          <option value="aus">{{ t.stuetzen_aus }}</option>
-        </select>
-      </label>
-      <label>{{ t.stuetz_filament }}
-        <select name="stuetz_slot">
-          <option value="0">{{ t.wie_modell }}</option>
-          {% for s in slots %}
-          <option value="{{ loop.index }}" {% if s.material == 'leer' %}disabled{% endif %}>
-            Slot {{ loop.index }} — {{ t.leer if s.material == 'leer' else s.material }}{% if s.farbe %} ({{ s.farbe }}){% endif %}
-          </option>
-          {% endfor %}
-        </select>
-      </label>
-      <label>{{ t.ausrichtung }}
-        <select name="ausrichtung">
-          <option value="auto">{{ t.ausrichtung_auto }}</option>
-          <option value="datei">{{ t.ausrichtung_datei }}</option>
-        </select>
-      </label>
-      <label>{{ t.fuellung }}
-        <input type="number" name="fuellung" min="0" max="100" step="5" placeholder="{{ t.profil_standard }}">
-      </label>
-      <label>{{ t.stuetz_art }}
-        <select name="stuetz_art">
-          <option value="profil">{{ t.profil_standard }}</option>
-          <option value="baum">{{ t.stuetz_baum }}</option>
-          <option value="normal">{{ t.stuetz_normal }}</option>
-        </select>
-      </label>
-      <label>{{ t.waende }}
-        <input type="number" name="waende" min="1" max="10" placeholder="{{ t.profil_standard }}">
-      </label>
-      <label>{{ t.deckschichten }}
-        <input type="number" name="deckschichten" min="0" max="15" placeholder="{{ t.profil_standard }}">
-      </label>
-      <label>{{ t.bodenschichten }}
-        <input type="number" name="bodenschichten" min="0" max="15" placeholder="{{ t.profil_standard }}">
-      </label>
-      <label>{{ t.anzahl }}
-        <input type="number" name="anzahl" value="1" min="1" max="25">
-      </label>
-      <label>{{ t.platte }}
-        <input type="number" name="platte" value="1" min="1" max="16">
-      </label>
-    </div>
+    {% include "jobfelder.html" %}
     <button type="submit">⬆️ {{ t.los }}</button>
   </form>
   <p class="hinweis">{{ t.hinweis_freigabe }}</p>
@@ -118,6 +56,9 @@
       {% endif %}{% endfor %}
     </div>
     {% endif %}
+    {% for w in rest_warnungen.get(j.id, []) %}
+    <div class="warn">{{ t.rest_warnung.format(slot=w.slot, bedarf='%.0f'|format(w.bedarf), rest='%.0f'|format(w.rest)) }}</div>
+    {% endfor %}
     {% if j.status == 'druckt' %}
     <div class="balken"><div class="balken-fuellung" style="width: {{ j.fortschritt or 0 }}%"></div></div>
     <div class="jobdaten">🖨️ {{ '%.0f'|format(j.fortschritt or 0) }} %

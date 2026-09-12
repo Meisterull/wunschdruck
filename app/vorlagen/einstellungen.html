@@ -1,31 +1,124 @@
 {% extends "basis.html" %}
 {% block inhalt %}
 <section class="karte">
-  <h2>🗄️ {{ t.lager_titel }}</h2>
-  {% if not lager %}<p class="hinweis">{{ t.lager_leer }}</p>{% endif %}
-  {% for f in lager %}
-  <div class="lagerzeile">
-    <span class="farbchip" style="background: {{ f.hex }}"></span>
-    <span class="lagername">{{ f.material }}{% if f.name %} — {{ f.name }}{% endif %}</span>
-    <form action="/einstellungen/lager/{{ loop.index0 }}/loeschen" method="post">
-      <button class="rot klein">🗑️</button>
+  <h2>🧵 {{ t.rollen_titel }}</h2>
+  <p class="hinweis">{{ t.rollen_hinweis }}</p>
+  {% if not rollen %}<p class="hinweis">{{ t.rollen_leer }}</p>{% endif %}
+  {% for r in rollen %}
+  <details class="rolle">
+    <summary>
+      <span class="farbchip" style="background: {{ r.hex }}"></span>
+      <span class="lagername">{{ r.material }}{% if r.farbe %} — {{ r.farbe }}{% endif %}{% if r.hersteller %} · {{ r.hersteller }}{% endif %}</span>
+      <span class="rest">{% if r.rest_g is not none %}{{ '%.0f'|format(r.rest_g) }} g{% else %}? g{% endif %}</span>
+      <span class="zustand">
+        {%- if im_slot.get(r.id) %}🖨️ {{ t.zustand_slot.format(slot=im_slot[r.id]) }}
+        {%- elif r.rest_g is not none and r.rest_g <= 0 %}{{ t.zustand_leer }}
+        {%- else %}{{ t.zustand_regal }}{% endif -%}
+      </span>
+    </summary>
+    {% if r.netto_g and r.rest_g is not none %}
+    <div class="balken"><div class="balken-fuellung" style="width: {{ [100, (100 * r.rest_g / r.netto_g)|round]|min }}%"></div></div>
+    {% endif %}
+    <form action="/einstellungen/rollen/{{ r.id }}" method="post" class="reihe">
+      <label>{{ t.rest }}
+        <input type="number" name="rest_g" min="0" step="0.1" value="{{ '%.1f'|format(r.rest_g) if r.rest_g is not none else '' }}" placeholder="{{ t.rest_unbekannt }}">
+      </label>
+      <label>{{ t.netto }}
+        <input type="number" name="netto_g" min="0" step="1" value="{{ '%.0f'|format(r.netto_g) if r.netto_g is not none else '' }}">
+      </label>
+      <label>{{ t.slot_material }}
+        <select name="material">
+          {% for m in ('PLA', 'PETG', 'TPU') %}<option {% if r.material == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>{{ t.farbname }}
+        <input type="text" name="farbe" maxlength="40" value="{{ r.farbe }}">
+      </label>
+      <label>{{ t.farbe }}
+        <input type="color" name="hex" value="{{ r.hex }}">
+      </label>
+      <label>{{ t.hersteller }}
+        <input type="text" name="hersteller" maxlength="60" value="{{ r.hersteller }}">
+      </label>
+      <label>{{ t.kaufdatum }}
+        <input type="date" name="kaufdatum" value="{{ r.kaufdatum }}">
+      </label>
+      <label>{{ t.notiz }}
+        <input type="text" name="notiz" maxlength="200" value="{{ r.notiz }}">
+      </label>
+      <button type="submit" class="klein">💾 {{ t.speichern }}</button>
     </form>
-  </div>
+    <div class="aktionen">
+      <form action="/einstellungen/rollen/{{ r.id }}/archiv" method="post"><button class="klein">📦 {{ t.archivieren }}</button></form>
+      <form action="/einstellungen/rollen/{{ r.id }}/loeschen" method="post"><button class="rot klein">🗑️ {{ t.loeschen }}</button></form>
+    </div>
+    <h3>📜 {{ t.verlauf }}</h3>
+    {% set v = verlauf.get(r.id) %}
+    {% if not v %}<p class="hinweis">{{ t.verlauf_leer }}</p>
+    {% else %}
+    <div class="tabelle">
+      <table>
+        {% for e in v %}
+        <tr>
+          <td>{{ e.zeit|datum }}</td>
+          <td>{{ t['art_' + e.art] if ('art_' + e.art) in t else e.art }}{% if e.anteil is not none and e.anteil < 1 %} {{ '%.0f'|format(e.anteil * 100) }} %{% endif %}</td>
+          <td>{{ '%+.1f'|format(e.gramm) }} g</td>
+          <td>{{ e.job_name }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+    {% endif %}
+  </details>
   {% endfor %}
-  <form action="/einstellungen/lager" method="post" class="reihe lagerform">
-    <label>{{ t.slot_material }}
-      <select name="material">
-        <option>PLA</option><option>PETG</option><option>TPU</option>
-      </select>
-    </label>
-    <label>{{ t.farbname }}
-      <input type="text" name="name" maxlength="40" placeholder="{{ t.farbname_beispiel }}">
-    </label>
-    <label>{{ t.farbe }}
-      <input type="color" name="hex" value="#d96b2b">
-    </label>
-    <button type="submit">➕ {{ t.hinzufuegen }}</button>
-  </form>
+
+  <details class="neuslice">
+    <summary>➕ {{ t.rolle_neu }}</summary>
+    <form action="/einstellungen/rollen" method="post" class="reihe">
+      <label>{{ t.slot_material }}
+        <select name="material">
+          <option>PLA</option><option>PETG</option><option>TPU</option>
+        </select>
+      </label>
+      <label>{{ t.farbname }}
+        <input type="text" name="farbe" maxlength="40" placeholder="{{ t.farbname_beispiel }}">
+      </label>
+      <label>{{ t.farbe }}
+        <input type="color" name="hex" value="#d96b2b">
+      </label>
+      <label>{{ t.hersteller }}
+        <input type="text" name="hersteller" maxlength="60">
+      </label>
+      <label>{{ t.netto }}
+        <input type="number" name="netto_g" min="0" step="1" value="1000">
+      </label>
+      <label>{{ t.rest }}
+        <input type="number" name="rest_g" min="0" step="0.1" value="1000" placeholder="{{ t.rest_unbekannt }}">
+      </label>
+      <label>{{ t.kaufdatum }}
+        <input type="date" name="kaufdatum" value="{{ heute }}">
+      </label>
+      <label>{{ t.notiz }}
+        <input type="text" name="notiz" maxlength="200">
+      </label>
+      <button type="submit">➕ {{ t.hinzufuegen }}</button>
+    </form>
+  </details>
+
+  {% if archiv %}
+  <details class="neuslice">
+    <summary>📦 {{ t.archiv_titel }} ({{ archiv|length }})</summary>
+    {% for r in archiv %}
+    <div class="lagerzeile">
+      <span class="farbchip" style="background: {{ r.hex }}"></span>
+      <span class="lagername">{{ r.material }}{% if r.farbe %} — {{ r.farbe }}{% endif %}{% if r.hersteller %} · {{ r.hersteller }}{% endif %}
+        · {% if r.rest_g is not none %}{{ '%.0f'|format(r.rest_g) }} g{% else %}? g{% endif %}</span>
+      <form action="/einstellungen/rollen/{{ r.id }}/zurueck" method="post"><button class="klein">↩️ {{ t.zurueckholen }}</button></form>
+      <form action="/einstellungen/rollen/{{ r.id }}/loeschen" method="post"><button class="rot klein">🗑️</button></form>
+    </div>
+    {% endfor %}
+  </details>
+  {% endif %}
 </section>
 
 <section class="karte">
@@ -41,10 +134,10 @@
       <label>{{ t.slot_inhalt }}
         <select name="slot{{ loop.index }}">
           <option value="leer">{{ t.leer }}</option>
-          {% for f in lager %}
-          <option value="{{ loop.index0 }}"
-            {% if s.material == f.material and s.farbe == f.name %}selected{% endif %}>
-            {{ f.material }}{% if f.name %} — {{ f.name }}{% endif %}
+          {% for r in rollen %}
+          <option value="{{ r.id }}" {% if s.rolle_id == r.id %}selected{% endif %}>
+            {{ r.material }}{% if r.farbe %} — {{ r.farbe }}{% endif %}{% if r.hersteller %} · {{ r.hersteller }}{% endif %}
+            ({% if r.rest_g is not none %}{{ '%.0f'|format(r.rest_g) }} g{% else %}? g{% endif %})
           </option>
           {% endfor %}
         </select>

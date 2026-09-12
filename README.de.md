@@ -41,11 +41,16 @@ gekostet hat, siehe [Orca-CLI-Fallen](#orca-cli-fallen).
 - **Mehrfarb-3MFs** (MakerWorld-/Bambu-/Orca-Projekte mit bemalten Farben): die
   App liest die Projektfarben und lässt jede Farbe einem physischen Slot 1–4
   zuordnen. Der Prime-Tower bleibt an, wie die U1-Profile es vorsehen.
-- **Filament-Lager und Slots**: Liste dessen, was du zuhause hast (Material,
-  Farbname, Hex), daraus die vier Slots des Druckers bestücken. Ist der Drucker
-  erreichbar, vergleicht jede Auftragskarte die benötigten Slots mit dem, was
-  *wirklich* geladen ist (Moonraker `print_task_config`), und warnt vor der
-  Freigabe.
+- **Rollen-Lager und Slots**: Jede Rolle, die du besitzt, ist ein Eintrag
+  (Material, Farbe, Hersteller, Nettogewicht, Rest in Gramm, Kaufdatum, Notiz)
+  mit eigenem Verlauf; die vier Drucker-Slots bestückst du aus dieser Liste.
+  Jeder fertige Wunschdruck-Druck geht automatisch von der Rolle im jeweiligen
+  Slot ab — egal ob aus der App oder am Drucker gestartet, Abbrüche anteilig
+  (Moonraker-Historie, genau einmal verbucht). Die Startseite zeigt den Rest
+  je Slot, und eine Job-Karte warnt, wenn sie mehr braucht, als die Rolle noch
+  hat. Ist der Drucker erreichbar, vergleicht jede Job-Karte außerdem die
+  benötigten Slots mit dem, was *tatsächlich* geladen ist (Moonraker
+  `print_task_config`), und warnt vor der Freigabe.
 - **3D-Vorschau des gesliceten G-Codes**: echte Lage auf der 270 × 270-Platte,
   Ebenen-Regler, Farben je Slot, Stützen transluzent, Füllung zuschaltbar, Blick
   unter die Platte für Erstschicht-Text. three.js, läuft auf dem Handy.
@@ -59,6 +64,11 @@ gekostet hat, siehe [Orca-CLI-Fallen](#orca-cli-fallen).
   Slot, automatisches Aufräumen alter Aufträge.
 - Meldungen über jeden HA-Notify-Dienst (Telegram, Mobile App, …): gesliced,
   gestartet, fertig, fehlgeschlagen.
+- **Modelle finden**: Link-Kacheln für MakerWorld und Thingiverse (im Browser
+  laden, dann die Datei in die App teilen) und mit Thingiverse-App-Token eine
+  Suche direkt in Wunschdruck: Treffer mit Bildern, Modellseite mit Lizenz und
+  Autor, STL/3MF auswählen, Auftragsoptionen setzen, fertig — die Datei landet
+  direkt im Container und wird gesliced.
 - Oberfläche Deutsch / Englisch, optionale Kamera-Stream-URL.
 
 <p align="center">
@@ -133,6 +143,7 @@ das Slicen. Schlüssel in `.env`:
 | Schlüssel | Bedeutung |
 |---|---|
 | `HA_URL`, `HA_TOKEN` | HA-Basis-URL und langlebiges Zugriffstoken |
+| `THINGIVERSE_TOKEN` | optional: App-Token von thingiverse.com/developers — schaltet die Thingiverse-Suche samt Download in der App frei |
 | `HA_NOTIFY` | Notify-Dienst für Meldungen, z. B. `notify.mobile_app_handy` |
 | `HA_SWITCH` | Steckdose des Druckers, z. B. `switch.drucker_steckdose` |
 | `HA_WARTUNGSRIEGEL` | `input_boolean`-Wartungsriegel; wenn an, verweigert die App das Einschalten |
@@ -169,10 +180,26 @@ eine Woche.
   Vanilla OrcaSlicer 2.4.2 sliced sie mit denselben flachen U1-Profilen; nur
   die Fork-eigene G-Code-Variable `chamber_cooling_mode` muss literalisiert
   werden.
-- Bemalte Dreiecke tragen `paint_color`-Codes. Kurze Codes bilden auf einen
-  Filament-Index ab (Decoder in `app/dreimf.py`); lange Baum-Codes sind fein
-  gepinselte Bereiche, die die App nicht anfasst — dort muss die Zuordnung 1:1
-  bleiben.
+- Bemalte Dreiecke tragen `paint_color`-Codes: den Bitstrom von PrusaSlicers
+  `TriangleSelector`, Hex-Ziffern **rückwärts** gelesen, je 4 Bit. Ein ganz
+  bemaltes Dreieck ist `4` = Filament 1, `8` = 2, `0C` = 3, `1C` = 4 — also
+  *nicht* „Filament × 4": ein `10` für Filament 4 dekodiert der Slicer als
+  *unbemalt*, und die Farbe verschwindet still. `app/dreimf.py` dekodiert und
+  kodiert den ganzen Baum, darum lassen sich auch fein gepinselte Bereiche
+  ummappen.
+- **Headless schreibt die CLI keine Thumbnails** (kein GL-Kontext), und der
+  U1-Touchscreen zeigt zum Job dann nur einen Platzhalter. Die App rendert
+  eigene PNGs aus den gesliceten Bahnen (`app/miniatur.py`, Pillow) und fügt
+  hinter dem Header einen Orca-üblichen `; thumbnail begin WxH`-Block ein —
+  Moonraker liest ihn wie bei einer Desktop-Datei.
+- **`filament_colour` im G-Code hat nichts mit den Slots zu tun.** Der Fork
+  schreibt bei STLs seinen Profil-Standard (`#F2754E`), ein Projekt-3MF behält
+  seine Original-Farbliste (aus einem Bambu-PVA-Slot wurde `#00000000`). Der
+  U1 gleicht G-Code-Filamente über Typ *und Farbe* mit den geladenen Slots ab
+  und schlug darum bei einem Zweifarbdruck für beide Farben Slot 1 vor. Die
+  App schreibt die Slot-Farben aus den Einstellungen in die Slot-Profile und
+  als Sicherheitsnetz in `filament_colour`/`extruder_colour` des
+  G-Code-Konfigblocks.
 - Projekt-3MFs aus einem neueren Slicer brauchen `--allow-newer-file`.
 - `--clone-objects N` ist die **Gesamt**zahl; `--repetitions` lehnt den
   Platten-Modus ab.

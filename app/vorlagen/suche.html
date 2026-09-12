@@ -1,0 +1,43 @@
+{% extends "basis.html" %}
+{% block inhalt %}
+<section class="karte">
+  <h2>🌐 {{ t.suche_titel }}</h2>
+  <div class="kacheln">
+    <a class="kachel" href="https://makerworld.com/" target="_blank" rel="noopener">🟢 {{ t.makerworld_kachel }}</a>
+    <a class="kachel" href="https://www.thingiverse.com/" target="_blank" rel="noopener">🔵 {{ t.thingiverse_kachel }}</a>
+  </div>
+  <p class="hinweis">{{ t.kachel_hinweis }}</p>
+</section>
+
+<section class="karte">
+  <h2>🔍 {{ t.thingiverse_suche }}</h2>
+  {% if not konfiguriert %}
+  <p class="hinweis">{{ t.thingiverse_token_fehlt }}</p>
+  {% else %}
+  <form action="/suche" method="get" class="reihe">
+    <label>{{ t.suche_feld }}
+      <input type="search" name="q" value="{{ q }}" placeholder="{{ t.suche_beispiel }}" required>
+    </label>
+    <button type="submit">🔍 {{ t.suche_los }}</button>
+  </form>
+  {% if fehler == 'ratelimit' %}<p class="fehler">{{ t.suche_ratelimit }}</p>
+  {% elif fehler %}<p class="fehler">{{ t.suche_fehler }}</p>{% endif %}
+  {% if ergebnis is not none %}
+    {% if not ergebnis.treffer %}<p class="hinweis">{{ t.suche_leer }}</p>{% endif %}
+    <div class="treffer">
+      {% for h in ergebnis.treffer %}
+      <a class="thing" href="/suche/thing/{{ h.id }}?q={{ q|urlencode }}">
+        {% if h.bild %}<img src="{{ h.bild }}" alt="" loading="lazy">{% endif %}
+        <span class="thingname">{{ h.name }}</span>
+        <span class="hinweis">{{ t.von }} {{ h.autor }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% if ergebnis.treffer|length >= 24 %}
+    <p><a class="knopf" href="/suche?q={{ q|urlencode }}&seite={{ seite + 1 }}">➡️ {{ t.mehr_treffer }}</a></p>
+    {% endif %}
+  {% endif %}
+  {% endif %}
+</section>
+<p><a href="/">← {{ t.zurueck }}</a></p>
+{% endblock %}

@@ -7,6 +7,7 @@ Erkenntnisse aus den Proben (proben/):
 - Zeit/Verbrauch stehen als Kommentare im G-Code-Kopf.
 """
 import json
+import logging
 import re
 import shutil
 import subprocess
@@ -32,6 +33,12 @@ MATERIAL_PROFIL = {
 }
 
 _index_cache: dict | None = None
+
+log = logging.getLogger("wunschdruck.slicer")
+
+STANDARD_SLOT_FARBE = "#808080"  # leerer Slot / kein Hex hinterlegt
+# G-Code-Konfigschluessel, an denen der U1 die Filamentfarbe abliest.
+_FARB_SCHLUESSEL = rb"filament_colour|extruder_colour|filament_multi_colour"
 
 
 def _profil_pfad(name: str) -> Path:
@@ -96,16 +103,55 @@ def eigenes_profil_importieren(roh: bytes) -> str:
     return name
 
 
-def _slot_filament(material: str, slot_nr: int) -> Path:
-    """Filamentprofil des Slots mit eindeutigem Namen (siehe Dedupe-Falle oben)."""
+def hex_farbe(wert: str | None) -> str:
+    """'#rrggbb' / 'rrggbb' → '#RRGGBB'; alles andere → Standardgrau."""
+    h = (wert or "").strip().lstrip("#")
+    if len(h) == 6 and all(c in "0123456789abcdefABCDEF" for c in h):
+        return "#" + h.upper()
+    return STANDARD_SLOT_FARBE
+
+
+def _slot_filament(material: str, slot_nr: int, farbe: str | None = None) -> Path:
+    """Filamentprofil des Slots mit eindeutigem Namen (siehe Dedupe-Falle oben)
+    und der Slot-Farbe aus den Einstellungen. Wird jedes Mal frisch
+    geschrieben — Lager und Slots aendern sich."""
     konfig.PROFIL_CACHE.mkdir(parents=True, exist_ok=True)
     ziel = konfig.PROFIL_CACHE / f"slot{slot_nr}-{material}.json"
-    if not ziel.exists():
-        basis = json.loads(_profil_pfad(
-            MATERIAL_PROFIL.get(material, MATERIAL_PROFIL["PLA"])).read_text())
-        basis["name"] = f"{basis.get('name', material)} Slot{slot_nr}"
-        ziel.write_text(json.dumps(basis, ensure_ascii=False))
+    basis = json.loads(_profil_pfad(
+        MATERIAL_PROFIL.get(material, MATERIAL_PROFIL["PLA"])).read_text())
+    basis["name"] = f"{basis.get('name', material)} Slot{slot_nr}"
+    # Der U1 gleicht G-Code-Filamente ueber Typ + Farbe mit den Slots ab;
+    # ohne Farbe im Profil landen Projekt-/Profil-Standardfarben im G-Code.
+    basis["default_filament_colour"] = [hex_farbe(farbe)]
+    basis["filament_colour"] = [hex_farbe(farbe)]
+    ziel.write_text(json.dumps(basis, ensure_ascii=False))
     return ziel
+
+
+def gcode_farben_setzen(gcode: Path, slot_farben: list[str]) -> bool:
+    """Slot-Farben in den G-Code-Konfigblock schreiben (filament_colour & Co.,
+    Eintrag i = Slot i; ueberzaehlige Eintraege bleiben stehen).
+
+    Sicherheitsnetz zum Profil-Weg: der Fork schreibt bei STLs seinen
+    Profil-Standard (#F2754E), ein Projekt-3MF behaelt seine Farbliste
+    (Bambu-PVA-Slot = #00000000) — der U1 schlug deshalb fuer beide Farben
+    eines Zweifarbdrucks Slot 1 vor (Befund 12.09.2026). True = geaendert."""
+    farben = [hex_farbe(f).encode() for f in slot_farben[:4]]
+    daten = gcode.read_bytes()
+
+    def ersetzen(m: re.Match) -> bytes:
+        alt = m.group(2).split(b";")
+        neu = [farben[i] if i < len(farben) else alt[i] for i in range(len(alt))]
+        return m.group(1) + b";".join(neu)
+
+    neu_daten, _ = re.subn(rb"^(; (?:" + _FARB_SCHLUESSEL + rb") = )([^\r\n]*)",
+                           ersetzen, daten, flags=re.M)
+    if neu_daten == daten:
+        return False
+    tmp = gcode.with_suffix(gcode.suffix + ".tmp")
+    tmp.write_bytes(neu_daten)
+    tmp.replace(gcode)
+    return True
 
 
 def _dauer_sekunden(text: str) -> int:
@@ -120,7 +166,7 @@ def gcode_metadaten(gcode: Path) -> dict:
     """Zeit und Verbrauch aus den Orca-Kommentaren ziehen — die stehen je nach
     Version im Kopf ODER im Fussteil, daher die ganze Datei scannen.
     verbrauch: Gramm je Filament-Slot (Komma-Liste im G-Code)."""
-    dauer_s, gewicht, verbrauch = None, None, None
+    dauer_s, gewicht, verbrauch, laenge = None, None, None, None
     with gcode.open(encoding="utf-8", errors="replace") as f:
         for zeile in f:
             if not zeile.startswith(";"):
@@ -134,9 +180,17 @@ def gcode_metadaten(gcode: Path) -> dict:
                     verbrauch = [float(w) for w in zeile.split("=", 1)[1].split(",")]
                 except ValueError:
                     pass
-            if dauer_s is not None and gewicht is not None and verbrauch is not None:
+            elif zeile.startswith("; filament used [mm]"):
+                # Gesamtlaenge: Bezugsgroesse fuer den Abbruch-Anteil im Lager
+                # (Moonraker-Historie liefert die extrudierte Laenge in mm).
+                try:
+                    laenge = sum(float(w) for w in zeile.split("=", 1)[1].split(","))
+                except ValueError:
+                    pass
+            if None not in (dauer_s, gewicht, verbrauch, laenge):
                 break
-    return {"dauer_s": dauer_s, "filament_g": gewicht, "verbrauch": verbrauch}
+    return {"dauer_s": dauer_s, "filament_g": gewicht, "verbrauch": verbrauch,
+            "filament_mm": laenge}
 
 
 def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
@@ -147,12 +201,15 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
            anzahl: int = 1, mehrfarb_projekt: bool = False,
            fuellung: int | None = None, stuetz_art: str = "profil",
            waende: int | None = None, deckschichten: int | None = None,
-           bodenschichten: int | None = None) -> dict:
+           bodenschichten: int | None = None,
+           slot_farben: list[str] | None = None) -> dict:
     """Modell slicen; liefert {'gcode': Path, 'dauer_s': int, 'filament_g': float}.
 
     slot_materialien (Mehrfarb-Pfad): Materialien der 4 physischen Slots in
     Reihenfolge – es werden 4 Filament-Profile geladen; `material`/`slot` sind
     dann ohne Bedeutung.
+    slot_farben: Hex-Farben der 4 Slots (Einstellungen) – landen im Profil
+    und im G-Code-Konfigblock, damit der U1 die Slots automatisch zuordnet.
     gruppen (robuster Mehrfarb-Weg): [(stl, slot)] aus dreimf.zerlegen – die
     STLs liegen schon plattenzentriert, darum arrange/orient AUS und die
     Slot-Nummern gehen als --load-filament-ids mit.
@@ -201,8 +258,10 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
         # Je Slot eine EINDEUTIG benannte Profilkopie: bei 4x identischem Namen
         # dedupliziert Orca, haelt den Drucker fuer einfarbig und schaltet den
         # (fuer den U1 empfohlenen) Prime-Tower still ab (Befund 05.09.).
+        farben = slot_farben or []
         filamente = ";".join(
-            str(_slot_filament(m, i + 1)) for i, m in enumerate(slot_materialien))
+            str(_slot_filament(m, i + 1, farben[i] if i < len(farben) else None))
+            for i, m in enumerate(slot_materialien))
     else:
         filamente = ";".join([str(filament)] * slot)
     # "wie in Datei": Rotation unangetastet lassen (--orient 0), die Platzierung
@@ -235,15 +294,19 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
         kommando[1:1] = ["--load-filament-ids", ",".join(str(s) for _, s in gruppen)]
         kommando = kommando[:-1] + [str(p) for p, _ in gruppen]
 
-    log = ziel_dir / "slice.log"
-    with log.open("w") as logdatei:
+    protokoll = ziel_dir / "slice.log"
+    with protokoll.open("w") as logdatei:
         lauf = subprocess.run(kommando, stdout=logdatei, stderr=subprocess.STDOUT,
                               timeout=konfig.SLICE_TIMEOUT_S)
     gcodes = sorted(ziel_dir.glob("plate_*.gcode"))
     if lauf.returncode != 0 or not gcodes:
-        letzte = "".join(log.read_text(errors="replace").splitlines(keepends=True)[-15:])
+        letzte = "".join(protokoll.read_text(errors="replace").splitlines(keepends=True)[-15:])
         raise RuntimeError(f"Slicer-Exit {lauf.returncode}, kein G-Code.\n{letzte}")
     gcode = gcodes[0]
+    if slot_farben and gcode_farben_setzen(gcode, slot_farben):
+        # Der Profil-Weg hat nicht gereicht (Projektfarben/Fork-Standard) —
+        # das Sicherheitsnetz hat die Farben nachgetragen.
+        log.info("Slot-Farben im G-Code nachgetragen: %s", gcode.name)
     return {"gcode": gcode, **gcode_metadaten(gcode)}
 
 
