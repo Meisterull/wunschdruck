@@ -63,11 +63,15 @@ because getting the Orca CLI to slice headless for the U1 cost days — see
   usage per slot, automatic cleanup of old jobs.
 - Notifications through any HA notify service (Telegram, mobile app, …):
   sliced, started, finished, failed.
-- **Find models**: link tiles for MakerWorld and Thingiverse (download in the
-  browser, then share the file into the app), and with a Thingiverse app token
-  a search page inside Wunschdruck: results with images, model page with
-  license and author, pick an STL/3MF, set the job options, done — the file
-  is downloaded straight into the container and sliced.
+- **Find models**: link tiles for MakerWorld, Thingiverse and Printables
+  (download in the browser, then share the file into the app), and a search
+  page inside Wunschdruck — Thingiverse with an app token, Printables behind a
+  flag: results with images, model page with license and author, pick an
+  STL/3MF, set the job options, done — the file is downloaded straight into
+  the container and sliced. Printables has no official API; Wunschdruck talks
+  to the GraphQL endpoint its web frontend uses (no token, downloads are
+  counted for the designer like in the browser) — that can break without
+  notice, hence the flag.
 - German / English UI, optional camera stream URL.
 
 <p align="center">
@@ -141,6 +145,7 @@ slicing. Keys in `.env`:
 |---|---|
 | `HA_URL`, `HA_TOKEN` | HA base URL and a long-lived access token |
 | `THINGIVERSE_TOKEN` | optional: app token from thingiverse.com/developers — enables the in-app Thingiverse search and download |
+| `PRINTABLES_SUCHE` | optional: `1` enables the in-app Printables search — unofficial frontend endpoint, no token; set `0` if it breaks |
 | `HA_NOTIFY` | notify service for messages, e.g. `notify.mobile_app_phone` |
 | `HA_SWITCH` | smart plug of the printer, e.g. `switch.printer_plug` |
 | `HA_WARTUNGSRIEGEL` | `input_boolean` maintenance lock; when on, the app refuses to power the printer up |

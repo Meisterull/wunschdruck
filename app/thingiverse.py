@@ -82,6 +82,11 @@ def thing(thing_id: int) -> dict:
                            or d.get("preview_image") or d.get("thumbnail") or "")}
 
 
+def modell(modell_id) -> dict:
+    """Gleiche Schnittstelle wie printables.modell() (generische Suche-Routen)."""
+    return thing(int(modell_id))
+
+
 def bilder(thing_id: int, maximal: int = 6) -> list[str]:
     roh = _get(f"/things/{int(thing_id)}/images")
     urls = []

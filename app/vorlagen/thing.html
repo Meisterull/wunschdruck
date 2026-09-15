@@ -1,11 +1,11 @@
 {% extends "basis.html" %}
 {% block inhalt %}
-<p><a href="/suche?q={{ q|urlencode }}">← {{ t.zurueck_suche }}</a></p>
+<p><a href="/suche?quelle={{ quelle }}&q={{ q|urlencode }}">← {{ t.zurueck_suche }}</a></p>
 <section class="karte">
   <h2>{{ info.name }}</h2>
   <p class="hinweis">{{ t.von }} {% if info.autor_url %}<a href="{{ info.autor_url }}" target="_blank" rel="noopener">{{ info.autor }}</a>{% else %}{{ info.autor }}{% endif %}
     {% if info.lizenz %} · {{ t.lizenz }}: {{ info.lizenz }}{% endif %}
-    {% if info.url %} · <a href="{{ info.url }}" target="_blank" rel="noopener">Thingiverse ↗</a>{% endif %}</p>
+    {% if info.url %} · <a href="{{ info.url }}" target="_blank" rel="noopener">{{ quelle_name }} ↗</a>{% endif %}</p>
   {% if bilder %}
   <div class="bilder">
     {% for b in bilder %}<img src="{{ b }}" alt="" loading="lazy">{% endfor %}
@@ -21,7 +21,7 @@
   {% if d.druckbar %}
   <details class="neuslice datei">
     <summary>🧊 {{ d.name }}{% if d.groesse %} <span class="hinweis">({{ '%.1f'|format(d.groesse / 1048576) }} MB)</span>{% endif %}</summary>
-    <form action="/suche/thing/{{ info.id }}/datei/{{ d.id }}" method="post">
+    <form action="/suche/{{ quelle }}/{{ info.id }}/datei/{{ d.id }}" method="post">
       {% include "jobfelder.html" %}
       <button type="submit">⬇️ {{ t.als_job }}</button>
     </form>

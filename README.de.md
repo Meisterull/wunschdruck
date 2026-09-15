@@ -64,11 +64,14 @@ gekostet hat, siehe [Orca-CLI-Fallen](#orca-cli-fallen).
   Slot, automatisches Aufräumen alter Aufträge.
 - Meldungen über jeden HA-Notify-Dienst (Telegram, Mobile App, …): gesliced,
   gestartet, fertig, fehlgeschlagen.
-- **Modelle finden**: Link-Kacheln für MakerWorld und Thingiverse (im Browser
-  laden, dann die Datei in die App teilen) und mit Thingiverse-App-Token eine
-  Suche direkt in Wunschdruck: Treffer mit Bildern, Modellseite mit Lizenz und
-  Autor, STL/3MF auswählen, Auftragsoptionen setzen, fertig — die Datei landet
-  direkt im Container und wird gesliced.
+- **Modelle finden**: Link-Kacheln für MakerWorld, Thingiverse und Printables
+  (im Browser laden, dann die Datei in die App teilen) und eine Suche direkt in
+  Wunschdruck — Thingiverse mit App-Token, Printables per Flag: Treffer mit
+  Bildern, Modellseite mit Lizenz und Autor, STL/3MF auswählen, Auftragsoptionen
+  setzen, fertig — die Datei landet direkt im Container und wird gesliced.
+  Printables hat keine offizielle API; Wunschdruck spricht die GraphQL-
+  Schnittstelle des Web-Frontends an (ohne Token, Download zählt beim Designer
+  wie im Browser) — das kann ohne Vorwarnung brechen, deshalb abschaltbar.
 - Oberfläche Deutsch / Englisch, optionale Kamera-Stream-URL.
 
 <p align="center">
@@ -144,6 +147,7 @@ das Slicen. Schlüssel in `.env`:
 |---|---|
 | `HA_URL`, `HA_TOKEN` | HA-Basis-URL und langlebiges Zugriffstoken |
 | `THINGIVERSE_TOKEN` | optional: App-Token von thingiverse.com/developers — schaltet die Thingiverse-Suche samt Download in der App frei |
+| `PRINTABLES_SUCHE` | optional: `1` schaltet die Printables-Suche frei — inoffizielle Frontend-Schnittstelle ohne Token, bei Ausfall auf `0` |
 | `HA_NOTIFY` | Notify-Dienst für Meldungen, z. B. `notify.mobile_app_handy` |
 | `HA_SWITCH` | Steckdose des Druckers, z. B. `switch.drucker_steckdose` |
 | `HA_WARTUNGSRIEGEL` | `input_boolean`-Wartungsriegel; wenn an, verweigert die App das Einschalten |

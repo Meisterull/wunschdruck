@@ -35,6 +35,10 @@ KAMERA_URL = os.environ.get("KAMERA_URL", "")
 # Thingiverse-Suche in der App (optional): App-Token von thingiverse.com/developers.
 # Leer = nur die Link-Kacheln (Browser + Teilen-Ziel).
 THINGIVERSE_TOKEN = os.environ.get("THINGIVERSE_TOKEN", "")
+# Printables-Suche in der App (optional, Flag): Printables hat keine offizielle
+# API, die App nutzt die GraphQL-Schnittstelle des Web-Frontends (ohne Token).
+# Kann ohne Vorwarnung brechen — dann hier abschalten.
+PRINTABLES_SUCHE = os.environ.get("PRINTABLES_SUCHE", "").strip().lower() in ("1", "true", "ja", "yes", "on")
 
 JOBS_DIR = DATEN_DIR / "jobs"
 PROFIL_CACHE = DATEN_DIR / "profil-cache"

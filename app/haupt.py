@@ -6,13 +6,14 @@ import re
 import shutil
 import time
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import db, i18n, konfig, moonraker, slicer, thingiverse, vorschau, worker
+from . import db, i18n, konfig, moonraker, printables, slicer, thingiverse, vorschau, worker
 
 logging.basicConfig(level=logging.INFO)
 
@@ -475,59 +476,77 @@ def _job_einstellungen(f) -> dict:
         bodenschichten=_opt_int(str(f.get("bodenschichten", "")), 0, 15))
 
 
+# Modellportale mit Suche in der App — gleiche Modul-Schnittstelle:
+# konfiguriert / suchen / modell / dateien / herunterladen (+ bilder, wenn
+# modell() keine liefert). Thingiverse braucht ein App-Token, Printables ein Flag.
+QUELLEN = {"thingiverse": thingiverse, "printables": printables}
+QUELLEN_NAMEN = {"thingiverse": "Thingiverse", "printables": "Printables"}
+API_FEHLER = (thingiverse.ApiFehler, printables.ApiFehler)
+
+
+def _quellen() -> list[str]:
+    return [name for name, modul in QUELLEN.items() if modul.konfiguriert()]
+
+
 @app.get("/suche")
-def suche(request: Request, q: str = "", seite: int = 1):
-    """Modelle finden: Link-Kacheln (MakerWorld/Thingiverse im Browser) und,
-    mit App-Token, die Thingiverse-Suche direkt in der App."""
+def suche(request: Request, q: str = "", seite: int = 1, quelle: str = ""):
+    """Modelle finden: Link-Kacheln (MakerWorld/Thingiverse/Printables im
+    Browser) und, je nach Konfiguration, die Suche direkt in der App."""
     sp = sprache(request)
+    verfuegbar = _quellen()
+    if quelle not in verfuegbar:
+        quelle = verfuegbar[0] if verfuegbar else ""
     ergebnis, fehler = None, request.query_params.get("fehler")
-    if q.strip() and thingiverse.konfiguriert():
+    if q.strip() and quelle:
         try:
-            ergebnis = thingiverse.suchen(q, max(1, seite))
-        except thingiverse.ApiFehler as e:
-            logging.getLogger("wunschdruck").warning("Thingiverse-Suche: %s", e)
+            ergebnis = QUELLEN[quelle].suchen(q, max(1, seite))
+        except API_FEHLER as e:
+            logging.getLogger("wunschdruck").warning("%s-Suche: %s", quelle, e)
             fehler = "ratelimit" if e.ratelimit else "api"
     return vorlagen.TemplateResponse(request, "suche.html", {
         "t": i18n.t(sp), "sprache": sp, "q": q.strip(), "seite": max(1, seite),
         "ergebnis": ergebnis, "fehler": fehler,
-        "konfiguriert": thingiverse.konfiguriert(),
+        "quelle": quelle, "quellen": verfuegbar, "quellen_namen": QUELLEN_NAMEN,
     })
 
 
-@app.get("/suche/thing/{thing_id}")
-def thing_seite(request: Request, thing_id: int, q: str = ""):
+@app.get("/suche/{quelle}/{modell_id}")
+def modell_seite(request: Request, quelle: str, modell_id: str, q: str = ""):
     sp = sprache(request)
-    if not thingiverse.konfiguriert():
+    modul = QUELLEN.get(quelle)
+    if not modul or not modul.konfiguriert() or not modell_id.isdigit():
         return RedirectResponse("/suche", status_code=303)
     try:
-        info = thingiverse.thing(thing_id)
-        dateien = thingiverse.dateien(thing_id)
-        bilder = thingiverse.bilder(thing_id)
-    except thingiverse.ApiFehler as e:
-        logging.getLogger("wunschdruck").warning("Thingiverse-Thing %s: %s", thing_id, e)
-        return RedirectResponse(f"/suche?q={q}&fehler={'ratelimit' if e.ratelimit else 'api'}",
+        info = modul.modell(modell_id)
+        dateien = modul.dateien(modell_id)
+        bilder = info["bilder"] if "bilder" in info else modul.bilder(modell_id)
+    except API_FEHLER as e:
+        logging.getLogger("wunschdruck").warning("%s-Modell %s: %s", quelle, modell_id, e)
+        return RedirectResponse(f"/suche?quelle={quelle}&q={quote(q)}&fehler={'ratelimit' if e.ratelimit else 'api'}",
                                 status_code=303)
     return vorlagen.TemplateResponse(request, "thing.html", {
         "t": i18n.t(sp), "sprache": sp, "q": q, "info": info, "dateien": dateien,
-        "bilder": bilder, "slots": db.slots(), "eigene_profile": slicer.eigene_profile(),
+        "bilder": bilder, "quelle": quelle, "quelle_name": QUELLEN_NAMEN[quelle],
+        "slots": db.slots(), "eigene_profile": slicer.eigene_profile(),
     })
 
 
-@app.post("/suche/thing/{thing_id}/datei/{datei_id}")
-async def thing_datei_job(request: Request, thing_id: int, datei_id: int):
-    """Datei von Thingiverse in einen neuen Job laden und slicen. Der Job
-    entsteht vor dem Download, damit ein Fehler sichtbar an der Karte landet."""
-    if not thingiverse.konfiguriert():
+@app.post("/suche/{quelle}/{modell_id}/datei/{datei_id}")
+async def modell_datei_job(request: Request, quelle: str, modell_id: str, datei_id: str):
+    """Datei vom Portal in einen neuen Job laden und slicen. Der Job entsteht
+    vor dem Download, damit ein Fehler sichtbar an der Karte landet."""
+    modul = QUELLEN.get(quelle)
+    if not modul or not modul.konfiguriert() or not (modell_id.isdigit() and datei_id.isdigit()):
         return RedirectResponse("/suche", status_code=303)
     felder = _job_einstellungen(await request.form())
-    job_id = db.job_anlegen(f"thingiverse-{thing_id}-{datei_id}", **felder)
+    job_id = db.job_anlegen(f"{quelle}-{modell_id}-{datei_id}", **felder)
     ordner = worker.job_dir(job_id)
     ordner.mkdir(parents=True, exist_ok=True)
     try:
-        _, name = thingiverse.herunterladen(thing_id, datei_id, ordner)
+        _, name = modul.herunterladen(modell_id, datei_id, ordner)
     except Exception as e:
-        logging.getLogger("wunschdruck").exception("Thingiverse-Download fehlgeschlagen")
-        db.job_update(job_id, status="fehler", fehler_text=f"Thingiverse: {e}"[:2000])
+        logging.getLogger("wunschdruck").exception("%s-Download fehlgeschlagen", quelle)
+        db.job_update(job_id, status="fehler", fehler_text=f"{QUELLEN_NAMEN[quelle]}: {e}"[:2000])
         return RedirectResponse("/", status_code=303)
     db.job_update(job_id, name=Path(name).name)
     worker.slice_schlange.put(job_id)
