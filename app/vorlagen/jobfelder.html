@@ -64,6 +64,15 @@
       <label>{{ t.bodenschichten }}
         <input type="number" name="bodenschichten" min="0" max="15" placeholder="{{ t.profil_standard }}">
       </label>
+      <label>{{ t.naht }}
+        <select name="naht">
+          <option value="">{{ t.profil_standard }}</option>
+          <option value="back">{{ t.naht_hinten }}</option>
+          <option value="aligned">{{ t.naht_aligned }}</option>
+          <option value="nearest">{{ t.naht_nearest }}</option>
+          <option value="random">{{ t.naht_random }}</option>
+        </select>
+      </label>
       <label>{{ t.anzahl }}
         <input type="number" name="anzahl" value="1" min="1" max="25">
       </label>

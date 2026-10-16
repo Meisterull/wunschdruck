@@ -210,7 +210,7 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
            anzahl: int = 1, mehrfarb_projekt: bool = False,
            fuellung: int | None = None, stuetz_art: str = "profil",
            waende: int | None = None, deckschichten: int | None = None,
-           bodenschichten: int | None = None,
+           bodenschichten: int | None = None, naht: str | None = None,
            slot_farben: list[str] | None = None,
            slot_im_modell: bool = False) -> dict:
     """Modell slicen; liefert {'gcode': Path, 'dauer_s': int, 'filament_g': float}.
@@ -257,6 +257,8 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
         prozess_basis["top_shell_layers"] = str(deckschichten)
     if bodenschichten is not None:
         prozess_basis["bottom_shell_layers"] = str(bodenschichten)
+    if naht:
+        prozess_basis["seam_position"] = naht
     if stuetzen and stuetz_art == "baum":
         prozess_basis["support_type"] = "tree(auto)"
     elif stuetzen and stuetz_art == "normal":

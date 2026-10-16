@@ -73,7 +73,8 @@ def _slicer_lauf():
                      "stuetz_art": zeile["stuetz_art"] or "profil",
                      "waende": zeile["waende"],
                      "deckschichten": zeile["deckschichten"],
-                     "bodenschichten": zeile["bodenschichten"]}
+                     "bodenschichten": zeile["bodenschichten"],
+                     "naht": zeile["naht"]}
 
             if len(analyse["farben"]) >= 2 and zuordnung:
                 # Mehrfarb-Projekt: Paint-Codes/Extruder auf die Ziel-Slots

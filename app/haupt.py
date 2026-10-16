@@ -141,7 +141,8 @@ async def hochladen(request: Request, datei: UploadFile = File(...),
                     stuetz_slot: int = Form(0), ausrichtung: str = Form("auto"),
                     anzahl: int = Form(1), fuellung: str = Form(""),
                     stuetz_art: str = Form("profil"), waende: str = Form(""),
-                    deckschichten: str = Form(""), bodenschichten: str = Form("")):
+                    deckschichten: str = Form(""), bodenschichten: str = Form(""),
+                    naht: str = Form("")):
     endung = Path(datei.filename or "").suffix.lower()
     qualitaet_ok = (qualitaet in ("fein", "standard", "schnell")
                     or (qualitaet.startswith("eigen:")
@@ -158,7 +159,8 @@ async def hochladen(request: Request, datei: UploadFile = File(...),
                             stuetz_art=stuetz_art if stuetz_art in ("profil", "baum", "normal") else "profil",
                             waende=_opt_int(waende, 1, 10),
                             deckschichten=_opt_int(deckschichten, 0, 15),
-                            bodenschichten=_opt_int(bodenschichten, 0, 15))
+                            bodenschichten=_opt_int(bodenschichten, 0, 15),
+                            naht=_naht_wert(naht))
     ordner = worker.job_dir(job_id)
     ordner.mkdir(parents=True, exist_ok=True)
     with (ordner / f"quelle{endung}").open("wb") as ziel:
@@ -209,6 +211,7 @@ async def neu_slicen(request: Request, job_id: str):
         waende=_opt_int(str(f.get("waende", "")), 1, 10),
         deckschichten=_opt_int(str(f.get("deckschichten", "")), 0, 15),
         bodenschichten=_opt_int(str(f.get("bodenschichten", "")), 0, 15),
+        naht=_naht_wert(str(f.get("naht", ""))),
         dauer_s=None, filament_g=None, verbrauch=None, fortschritt=None,
         fehler_text=None, gestartet=None,
     )
@@ -370,6 +373,15 @@ def _gramm(wert) -> float | None:
         return None
 
 
+# Orca-Nahtposition; "back" = hinten auf dem Bett (+Y), also Teil mit der
+# Schauseite nach vorn (-Y) aufs Bett legen.
+NAHT_WERTE = ("back", "aligned", "nearest", "random")
+
+
+def _naht_wert(roh: str) -> str | None:
+    return roh if roh in NAHT_WERTE else None
+
+
 def _rollen_felder(formular) -> dict:
     material = str(formular.get("material", "PLA"))
     if material not in ("PLA", "PETG", "TPU"):
@@ -473,7 +485,8 @@ def _job_einstellungen(f) -> dict:
         stuetz_art=stuetz_art if stuetz_art in ("profil", "baum", "normal") else "profil",
         waende=_opt_int(str(f.get("waende", "")), 1, 10),
         deckschichten=_opt_int(str(f.get("deckschichten", "")), 0, 15),
-        bodenschichten=_opt_int(str(f.get("bodenschichten", "")), 0, 15))
+        bodenschichten=_opt_int(str(f.get("bodenschichten", "")), 0, 15),
+        naht=_naht_wert(str(f.get("naht", ""))))
 
 
 # Modellportale mit Suche in der App — gleiche Modul-Schnittstelle:

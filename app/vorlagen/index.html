@@ -189,6 +189,14 @@
             <input type="number" name="bodenschichten" min="0" max="15"
                    value="{{ j.bodenschichten if j.bodenschichten is not none else '' }}" placeholder="{{ t.profil_standard }}">
           </label>
+          <label>{{ t.naht }}
+            <select name="naht">
+              <option value="">{{ t.profil_standard }}</option>
+              {% for w, k in (("back", "naht_hinten"), ("aligned", "naht_aligned"), ("nearest", "naht_nearest"), ("random", "naht_random")) %}
+              <option value="{{ w }}"{% if j.naht == w %} selected{% endif %}>{{ t[k] }}</option>
+              {% endfor %}
+            </select>
+          </label>
         </div>
         {% if j.id in mehrfarb_jobs %}
         <label class="zeile"><input type="checkbox" name="farbwahl_neu" value="1"> {{ t.farbwahl_neu }}</label>
