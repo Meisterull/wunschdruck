@@ -193,6 +193,15 @@ def gcode_metadaten(gcode: Path) -> dict:
             "filament_mm": laenge}
 
 
+def _bett_typ() -> str:
+    """default_bed_type des Maschinenprofils (U1: "Textured PEI Plate")."""
+    try:
+        return json.loads(_profil_pfad(MASCHINE).read_text()).get(
+            "default_bed_type") or "Textured PEI Plate"
+    except (OSError, ValueError):
+        return "Textured PEI Plate"
+
+
 def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
            stuetzen: bool, slot: int, platte: int,
            slot_materialien: list[str] | None = None,
@@ -235,6 +244,10 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
     # hätte Arc-Fitting sonst an (04.09.: Bögen wurden in der Vorschau zu
     # Sehnen quer durchs Modell — "Spinnennetz").
     prozess_basis["enable_arc_fitting"] = "0"
+    # Betttyp = Standard des U1-Profils (Textured PEI). Ohne diesen Eintrag nimmt
+    # die CLI "Cool Plate" — dort hat PETG 0 °C und PLA 35 °C hinterlegt: Der
+    # erste PETG-Druck löste sich und wurde Spaghetti (Befund 16.10.2026).
+    prozess_basis["curr_bed_type"] = _bett_typ()
     prozess_basis["enable_support"] = "1" if stuetzen else "0"
     if fuellung is not None:
         prozess_basis["sparse_infill_density"] = f"{fuellung}%"
