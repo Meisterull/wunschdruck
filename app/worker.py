@@ -90,9 +90,12 @@ def _slicer_lauf():
                     stuetz_slot=stuetz_slot, ausrichtung=ausrichtung,
                     anzahl=anzahl, mehrfarb_projekt=True, **extra)
             else:
-                # Einfarbige 3MFs entgiften (CLI-giftige eingebettete Settings).
+                # Einfarbige 3MFs entgiften (CLI-giftige eingebettete Settings) und
+                # Slot/Stückzahl so vorbereiten, dass die CLI sie annimmt.
+                slot_im_modell = False
                 if quelle.suffix.lower() == ".3mf":
-                    quelle = dreimf.ummappen(quelle, ordner / f"gemappt{quelle.suffix}", {})
+                    quelle, slot_im_modell = dreimf.einfarbig_vorbereiten(
+                        quelle, ordner, zeile["slot"], anzahl)
                 # Stuetzen aus anderem Slot brauchen alle 4 Filament-Profile.
                 slot_materialien = ([s["material"] for s in slots]
                                     if stuetz_slot and stuetz_slot != zeile["slot"] else None)
@@ -100,7 +103,8 @@ def _slicer_lauf():
                     quelle, ordner / "ausgabe", material, zeile["qualitaet"],
                     bool(zeile["stuetzen"]), zeile["slot"], zeile["platte"],
                     slot_materialien=slot_materialien, stuetz_slot=stuetz_slot,
-                    ausrichtung=ausrichtung, anzahl=anzahl, **extra)
+                    ausrichtung=ausrichtung, anzahl=anzahl,
+                    slot_im_modell=slot_im_modell, **extra)
             # Vorschaubild für den Drucker-Touchscreen (die CLI liefert keins);
             # ein Fehler hier darf den fertigen Job nicht kippen.
             try:

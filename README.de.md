@@ -173,7 +173,11 @@ eine Woche.
 - Druckzeit und Filamentverbrauch stehen je nach Lage im G-Code-**Fußteil**,
   nicht im Kopf — die ganze Datei scannen.
 - Slot *N*: *N* Einträge in `--load-filaments` plus `--load-filament-ids N`;
-  der G-Code nutzt dann `T(N-1)`.
+  der G-Code nutzt dann `T(N-1)`. **Nicht bei 3MF:** Mit `--load-filament-ids` oder
+  `--clone-objects` lehnt die CLI jedes 3MF ab („can not load 3mf when set
+  loaded_filament_ids or clone_objects“). Wunschdruck schreibt den Slot stattdessen
+  in die `model_settings.config` des Projekts und wandelt schlichte 3MFs (oder jedes
+  3MF mit Stückzahl > 1) in STL.
 - **Orca dedupliziert `--load-filaments` nach dem `name`-Feld.** Viermal
   dasselbe „Generic PLA" lässt den Drucker einfarbig aussehen, und der
   Prime-Tower verschwindet still. Jedem Slot eine eindeutig benannte Kopie

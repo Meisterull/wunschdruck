@@ -202,7 +202,8 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
            fuellung: int | None = None, stuetz_art: str = "profil",
            waende: int | None = None, deckschichten: int | None = None,
            bodenschichten: int | None = None,
-           slot_farben: list[str] | None = None) -> dict:
+           slot_farben: list[str] | None = None,
+           slot_im_modell: bool = False) -> dict:
     """Modell slicen; liefert {'gcode': Path, 'dauer_s': int, 'filament_g': float}.
 
     slot_materialien (Mehrfarb-Pfad): Materialien der 4 physischen Slots in
@@ -213,6 +214,8 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
     gruppen (robuster Mehrfarb-Weg): [(stl, slot)] aus dreimf.zerlegen – die
     STLs liegen schon plattenzentriert, darum arrange/orient AUS und die
     Slot-Nummern gehen als --load-filament-ids mit.
+    slot_im_modell: der Slot steht schon im 3MF (dreimf.slot_einbetten) – dann
+    KEIN --load-filament-ids, das lehnt die CLI bei 3MFs ab.
     Wirft RuntimeError mit den letzten Logzeilen, wenn die CLI scheitert.
     """
     ziel_dir.mkdir(parents=True, exist_ok=True)
@@ -277,7 +280,7 @@ def slicen(quelle: Path, ziel_dir: Path, material: str, qualitaet: str,
         "--outputdir", str(ziel_dir),
         str(quelle),
     ]
-    if slot > 1 and not gruppen:
+    if slot > 1 and not gruppen and not slot_im_modell:
         kommando[1:1] = ["--load-filament-ids", str(slot)]
     if anzahl > 1 and not gruppen:
         # Mehrere Exemplare; --arrange packt sie auf die Platte. Der Wert ist die

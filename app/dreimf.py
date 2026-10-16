@@ -255,6 +255,90 @@ def ummappen(quelle: Path, ziel: Path, zuordnung: dict[int, int]) -> Path:
 
 
 # ---------------------------------------------------------------------------
+# Einfarbige 3MFs auf Slot > 1 / mit Stückzahl > 1
+#
+# Die Orca-CLI lehnt 3MFs ab, sobald --load-filament-ids oder --clone-objects
+# gesetzt sind ("can not load 3mf when set loaded_filament_ids or clone_objects",
+# Befund 16.10.2026). Darum: Slot direkt ins 3MF schreiben (Projekt-3MF mit
+# model_settings.config), sonst Geometrie als STL herauslösen.
+# ---------------------------------------------------------------------------
+
+_OBJEKT_RE = re.compile(r'(<object\s+id="[^"]*"\s*>)(.*?)(</object>)', re.S)
+
+
+def _hat_orca_config(quelle: Path) -> bool:
+    with zipfile.ZipFile(quelle) as z:
+        return "Metadata/model_settings.config" in z.namelist()
+
+
+def _plattenzahl(quelle: Path) -> int:
+    with zipfile.ZipFile(quelle) as z:
+        if "Metadata/model_settings.config" not in z.namelist():
+            return 1
+        text = z.read("Metadata/model_settings.config").decode("utf-8", "replace")
+    return max(1, len(re.findall(r"<plate\b", text)))
+
+
+def _hat_sonderteile(quelle: Path) -> bool:
+    """Modifier-, Negativ- oder Stützen-Teile – die würden beim Herauslösen als STL
+    zu echter Geometrie."""
+    with zipfile.ZipFile(quelle) as z:
+        if "Metadata/model_settings.config" not in z.namelist():
+            return False
+        text = z.read("Metadata/model_settings.config").decode("utf-8", "replace")
+    return any(t != "normal_part" for t in re.findall(r'subtype="([^"]+)"', text))
+
+
+def slot_einbetten(quelle: Path, ziel: Path, slot: int) -> Path:
+    """Einfarbiges Projekt-3MF komplett auf Filament `slot` stellen: Teil-/Objekt-
+    Extruder und Paint-Codes umschreiben, fehlende Objekt-Extruder ergänzen
+    (Orca nähme sonst Filament 1). Entgiftet wie ummappen()."""
+    ummappen(quelle, ziel, {i: slot for i in range(1, 17)})
+    with zipfile.ZipFile(ziel) as alt:
+        eintraege = [(e, alt.read(e.filename)) for e in alt.infolist()]
+
+    def ergaenzen(m: re.Match) -> str:
+        kopf_bis_part = m.group(2).split("<part", 1)[0]
+        if 'key="extruder"' in kopf_bis_part:
+            return m.group(0)
+        return f'{m.group(1)}<metadata key="extruder" value="{slot}"/>{m.group(2)}{m.group(3)}'
+
+    with zipfile.ZipFile(ziel, "w", zipfile.ZIP_DEFLATED) as neu:
+        for eintrag, daten in eintraege:
+            if eintrag.filename == "Metadata/model_settings.config":
+                daten = _OBJEKT_RE.sub(ergaenzen, daten.decode("utf-8", "replace")).encode("utf-8")
+            neu.writestr(eintrag, daten)
+    return ziel
+
+
+def einfarbig_vorbereiten(quelle: Path, ordner: Path, slot: int,
+                          anzahl: int) -> tuple[Path, bool]:
+    """Einfarbiges 3MF slicefertig machen. Liefert (pfad, slot_eingebettet):
+    slot_eingebettet=True heißt, der Slot steht schon im 3MF → der Slicer darf
+    KEIN --load-filament-ids setzen. Bei Stückzahl > 1 oder 3MF ohne Orca-
+    Metadaten wird ein STL daraus (darauf greifen beide CLI-Optionen)."""
+    if anzahl > 1 or (slot > 1 and not _hat_orca_config(quelle)):
+        if _plattenzahl(quelle) > 1 or _hat_sonderteile(quelle):
+            raise ValueError("Stückzahl > 1 geht bei diesem 3MF nicht (mehrere Platten oder "
+                             "Modifier-/Negativteile) – bitte im Slicer vervielfältigen oder Stückzahl 1 wählen.")
+        stl = ordner / "einfarbig.stl"
+        dreiecke = [tri for pfad, _ in zerlegen(quelle, ordner / "einfarbig", {})
+                    for tri in _stl_lesen(pfad)]
+        _stl_schreiben(stl, dreiecke)
+        return stl, False
+    if slot > 1:
+        return slot_einbetten(quelle, ordner / f"gemappt{quelle.suffix}", slot), True
+    return ummappen(quelle, ordner / f"gemappt{quelle.suffix}", {}), False
+
+
+def _stl_lesen(pfad: Path) -> list:
+    daten = pfad.read_bytes()
+    n = struct.unpack_from("<I", daten, 80)[0]
+    return [tuple(struct.unpack_from("<3f", daten, 84 + i * 50 + 12 + k * 12) for k in range(3))
+            for i in range(n)]
+
+
+# ---------------------------------------------------------------------------
 # Zerlegen: 3MF → ein STL je Ziel-Slot (der robuste Mehrfarb-Weg)
 #
 # Die CLI stürzt beim Laden von Projekt-3MFs mit mehreren Extrudern im

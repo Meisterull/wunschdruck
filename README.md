@@ -169,7 +169,11 @@ drive the Orca CLI headless for a U1 yourself, this list may save you a week.
 - Estimated time and filament usage may sit in the G-code **footer**, not the
   header — scan the whole file.
 - Slot *N*: pass *N* entries in `--load-filaments` plus `--load-filament-ids N`;
-  the G-code then uses `T(N-1)`.
+  the G-code then uses `T(N-1)`. **Not for 3MF:** with `--load-filament-ids` or
+  `--clone-objects` the CLI refuses any 3MF ("can not load 3mf when set
+  loaded_filament_ids or clone_objects"). Wunschdruck writes the slot into the
+  project's `model_settings.config` instead, and converts plain 3MFs (or any 3MF
+  with quantity > 1) to STL.
 - **Orca deduplicates `--load-filaments` by the profile's `name`.** Four
   identical "Generic PLA" entries make the printer look single-extruder and
   the prime tower silently disappears. Give every slot a uniquely named copy.
